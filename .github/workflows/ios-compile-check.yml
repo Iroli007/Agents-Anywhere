@@ -1,0 +1,40 @@
+name: iOS compile check
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build the iOS app target
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Report the toolchain
+        run: |
+          ls -d /Applications/Xcode*.app || true
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version || true
+
+      - name: Select the newest Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode*.app | sort -V | tail -1)
+          echo "DEVELOPER_DIR=$newest/Contents/Developer" >> "$GITHUB_ENV"
+          echo "Selected $newest"
+
+      - name: Build the app for a generic iOS device
+        working-directory: ios
+        run: |
+          xcodebuild \
+            -project "Agents Anywhere/Agents Anywhere.xcodeproj" \
+            -scheme "Agents Anywhere" \
+            -configuration Debug \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/dd" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
