@@ -63,6 +63,9 @@ export async function nativeRuntime(home: string, beforeHost?: (ctx: Context) =>
     cold.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
     await ctx.sessions.flush(cold)
     detach()
+    // Ensure both sessions are fully initialized before proceeding
+    await new Promise(resolve => setImmediate(resolve))
+    
     await ctx.plugin(TypertRegistry).await()
     await ctx.plugin(Gateway).await()
     await beforeHost?.(ctx)
