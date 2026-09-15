@@ -197,6 +197,7 @@ class ClaudeTurnRunner:
                 stderr=stderr.record,
                 settings_path=settings_path,
                 on_tool_result=tool_result,
+                before_tool=lambda data: connection.before_tool(data),
             )
         except BaseException:
             remove_gateway_settings_file(settings_path)
@@ -486,7 +487,31 @@ class ClaudeTurnRunner:
                         "Claude user message publish failed session_id={}",
                         session.session_id,
                     )
-            if connection is not None and connection.retained:
+            reconciled = False
+            if connection is not None and client is not None:
+                if (
+                    scheduled
+                    and terminal is not None
+                    and terminal.status == "completed"
+                ):
+                    connection.reconcile_needed = True
+                if (
+                    connection.reconcile_needed
+                    and connection.retained
+                    and not connection.reconciling
+                    and connection.pending is None
+                    and not connection.closing
+                    and not self.stopping
+                    and terminal is not None
+                    and terminal.status == "completed"
+                ):
+                    try:
+                        reconciled = await connection.reconcile_tasks(client)
+                    except asyncio.CancelledError:
+                        terminal = interrupted_terminal_event(
+                            execution.interrupt_reason
+                        )
+            if connection is not None and (connection.retained or reconciled):
                 try:
                     await self.scheduled_sessions.save(session, connection.task_ids)
                 except Exception as exc:  # noqa: BLE001

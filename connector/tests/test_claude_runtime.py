@@ -24,6 +24,7 @@ from connector.runtimes.claude.domain.pending_messages import (
 )
 from connector.runtimes.claude.domain.session import ClaudeExecution, stable_session_id
 from connector.runtimes.claude.runtime import ClaudeRuntime
+from connector.runtimes.claude.sdk.connection import RECONCILE_PROMPT
 
 
 @pytest.mark.parametrize(
@@ -3692,6 +3693,111 @@ class _ScheduledClaudeClient(_FakeClaudeClient):
                 terminal_reason="aborted_streaming",
             )
         )
+
+
+class _ReconcileClaudeClient(_ScheduledClaudeClient):
+    def __init__(self) -> None:
+        super().__init__()
+        self.jobs: list[dict[str, Any]] = []
+        self.check_error = False
+        self.hold_check = False
+
+    async def query(self, prompt):
+        if isinstance(prompt, str):
+            await super().query(prompt)
+            return
+        async for message in prompt:
+            content = message["message"]["content"]
+            await self.incoming.put(UserMessage(uuid=message["uuid"], content=content))
+        if content != RECONCILE_PROMPT:
+            await super().query(content)
+            return
+        self.queries.append(content)
+
+        async def check():
+            if self.hold_check:
+                return
+            hook = self.options.kwargs["hooks"]["PreToolUse"][0].hooks[0]
+            allowed = await hook({"tool_name": "CronList"})
+            assert allowed["hookSpecificOutput"]["permissionDecision"] == "allow"
+            denied = await hook({"tool_name": "Bash"})
+            assert denied["hookSpecificOutput"]["permissionDecision"] == "deny"
+            await self.tool_result("CronList", {"jobs": self.jobs})
+            await self.incoming.put(SimpleNamespace(
+                type="result", session_id=self.native_id, is_error=self.check_error,
+            ))
+
+        await self.incoming.put(check)
+
+    async def receive_messages(self):
+        async for message in super().receive_messages():
+            if callable(message):
+                await message()
+            else:
+                yield message
+
+
+@pytest.mark.parametrize(
+    ("jobs", "check_error", "closes"),
+    [([], False, True), ([{"id": "future_timer"}], False, False),
+     ([{"id": "recurring_timer"}], False, False),
+     ([{"bad": "missing id"}], False, False), ([], True, False)],
+)
+def test_claude_reconciles_after_scheduled_reply_without_visible_maintenance(
+    jobs, check_error, closes,
+) -> None:
+    async def run():
+        client = _ReconcileClaudeClient()
+        client.jobs, client.check_error = jobs, check_error
+        host = _RecordingHost()
+        sdk = _default_sdk()
+        sdk.HookMatcher = _FakeHookMatcher
+        runtime = _runtime(client=client, sdk=sdk, host=host)
+        try:
+            await runtime.start_turn("timer", None, "schedule")
+            await runtime._sessions["timer"].active_task
+            assert RECONCILE_PROMPT not in client.queries
+            await client.reply("reminder delivered")
+            await _wait_until(lambda: len(host.session_turn_ends) == 2)
+            await _wait_until(lambda: runtime._sessions["timer"].execution is None)
+            if closes:
+                await _wait_until(lambda: client.disconnected)
+            assert client.disconnected is closes
+            assert client.queries.count(RECONCILE_PROMPT) == 1
+            assert len([i for i in host.timeline_item_upserts if i.role == "user"]) == 1
+            assert not any(RECONCILE_PROMPT in str(i.content) for i in host.timeline_item_upserts)
+            saved = host.sync_states["claude/scheduled/sessions"]["sessions"]
+            assert ("timer" not in saved) is closes
+            if not closes:
+                expected = {"timer_1"} if check_error or jobs == [{"bad": "missing id"}] else {jobs[0]["id"]}
+                assert runtime._turns.runner.connections["timer"].task_ids == expected
+        finally:
+            await runtime.stop()
+
+    asyncio.run(run())
+
+
+def test_claude_stop_during_maintenance_preserves_pending_tasks() -> None:
+    async def run():
+        client = _ReconcileClaudeClient()
+        client.hold_check = True
+        sdk = _default_sdk()
+        sdk.HookMatcher = _FakeHookMatcher
+        host = _RecordingHost()
+        runtime = _runtime(client=client, sdk=sdk, host=host)
+        try:
+            await runtime.start_turn("timer", None, "schedule")
+            await runtime._sessions["timer"].active_task
+            await client.reply("reminder delivered")
+            await _wait_until(lambda: RECONCILE_PROMPT in client.queries)
+            await asyncio.wait_for(runtime.stop(), 2)
+            assert client.disconnected
+            assert runtime._sessions["timer"].execution is None
+            assert host.sync_states["claude/scheduled/sessions"]["sessions"]["timer"]["taskIds"] == ["timer_1"]
+        finally:
+            await runtime.stop()
+
+    asyncio.run(run())
 
 
 def test_claude_scheduled_reply_racing_user_submission_keeps_turn_ownership() -> None:

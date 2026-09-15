@@ -34,6 +34,7 @@ def new_sdk_client(
     stderr: Callable[[str], None] | None = None,
     settings_path: str | None = None,
     on_tool_result: Any | None = None,
+    before_tool: Any | None = None,
 ) -> Any:
     options = build_sdk_options(
         sdk,
@@ -43,6 +44,7 @@ def new_sdk_client(
         stderr=stderr,
         settings_path=settings_path,
         on_tool_result=on_tool_result,
+        before_tool=before_tool,
     )
     if client_factory is not None:
         return client_factory(sdk, options)
@@ -63,6 +65,7 @@ def build_sdk_options(
     stderr: Callable[[str], None] | None = None,
     settings_path: str | None = None,
     on_tool_result: Any | None = None,
+    before_tool: Any | None = None,
 ) -> Any:
     values = dict(config_values)
     kwargs: dict[str, Any] = {
@@ -99,7 +102,7 @@ def build_sdk_options(
         kwargs["stderr"] = stderr
     if settings_path is not None:
         kwargs["settings"] = settings_path
-    hooks = _permission_hooks(sdk, on_tool_result)
+    hooks = _permission_hooks(sdk, on_tool_result, before_tool)
     if hooks is not None:
         kwargs["hooks"] = hooks
     options_cls = getattr(sdk, "ClaudeAgentOptions", None) or getattr(
@@ -181,7 +184,7 @@ async def maybe_await(value: Any) -> Any:
 
 
 def _permission_hooks(
-    sdk: Any, on_tool_result: Any | None = None
+    sdk: Any, on_tool_result: Any | None = None, before_tool: Any | None = None
 ) -> dict[str, Any] | None:
     hook_matcher = _optional_attr(sdk, "HookMatcher", "types.HookMatcher")
     if hook_matcher is None:
@@ -191,7 +194,11 @@ def _permission_hooks(
         _input_data: Any,
         _tool_use_id: Any = None,
         _context: Any = None,
-    ) -> dict[str, bool]:
+    ) -> dict[str, Any]:
+        if before_tool is not None:
+            result = await before_tool(_input_data)
+            if result:
+                return result
         return {"continue_": True}
 
     hooks = {

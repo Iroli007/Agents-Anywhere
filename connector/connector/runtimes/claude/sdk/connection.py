@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any
 from uuid import uuid4
 
+from connector.logging import logger
 from connector.runtimes.claude.domain.session import ClaudeExecution
 from connector.runtimes.claude.sdk.client import (
     connect_client,
@@ -21,6 +22,12 @@ from connector.runtimes.claude.sdk.events import (
 from connector.runtimes.claude.timeline.messages import message_id, message_role
 from connector.runtimes.claude.timeline.stream import is_stream_event
 
+RECONCILE_PROMPT = (
+    "AA connection maintenance: call CronList exactly once to report the current "
+    "scheduled task list, then stop. If needed, use ToolSearch to find CronList. "
+    "Do not create, delete, execute or modify tasks or perform any other work."
+)
+
 
 @dataclass(slots=True)
 class ClaudeResponse:
@@ -31,6 +38,8 @@ class ClaudeResponse:
     released: asyncio.Event = field(default_factory=asyncio.Event)
     terminal_received: bool = False
     discard: bool = False
+    maintenance: bool = False
+    task_snapshot: set[str] | None = None
 
     async def connect(self) -> None:
         await self.connection.connect()
@@ -101,6 +110,8 @@ class ClaudeConnection:
     closing: bool = False
     task_ids: set[str] = field(default_factory=set)
     selections: dict[str, str | None] = field(default_factory=dict)
+    reconcile_needed: bool = False
+    reconciling: bool = False
 
     @property
     def retained(self) -> bool:
@@ -141,13 +152,68 @@ class ClaudeConnection:
             elif name == "CronDelete" and isinstance(task_id, str):
                 self.task_ids.discard(task_id)
             elif name == "CronList" and isinstance(response.get("jobs"), list):
-                self.task_ids = {
-                    job["id"]
-                    for job in response["jobs"]
-                    if isinstance(job, dict) and isinstance(job.get("id"), str)
-                }
+                jobs = response["jobs"]
+                if any(
+                    not isinstance(job, dict) or not isinstance(job.get("id"), str)
+                    for job in jobs
+                ):
+                    return {}
+                ids = {job["id"] for job in jobs}
+                if self.current is not None and self.current.maintenance:
+                    self.current.task_snapshot = ids
+                else:
+                    self.task_ids = ids
             return {}
         return {}
+
+    async def before_tool(self, data: Any) -> dict[str, Any]:
+        if self.reconciling:
+            await self.prepare_approval()
+        if self.current is not None and self.current.maintenance:
+            allowed = data.get("tool_name") in {"CronList", "ToolSearch"}
+            return {
+                "hookSpecificOutput": {
+                    "hookEventName": "PreToolUse",
+                    "permissionDecision": "allow" if allowed else "deny",
+                    "permissionDecisionReason": "AA maintenance only reads the scheduled task list.",
+                }
+            }
+        return {}
+
+    async def reconcile_tasks(self, response: ClaudeResponse) -> bool:
+        self.reconcile_needed = False
+        self.reconciling = True
+        check = self.response_for(response.execution)
+        check.maintenance = True
+        response.execution.client = check
+        response.release()
+        try:
+            async with asyncio.timeout(30):
+                await check.query(RECONCILE_PROMPT)
+                async for message in check.receive_response():
+                    terminal = terminal_event_from_message(message)
+                    if terminal is not None:
+                        if (
+                            terminal.status == "completed"
+                            and check.task_snapshot is not None
+                        ):
+                            self.task_ids = check.task_snapshot
+                            return True
+                        break
+            logger.warning(
+                "Claude task reconciliation did not return a valid task list"
+            )
+            return False
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Claude task reconciliation failed: {}", exc)
+            return False
+        finally:
+            try:
+                if not check.terminal_received and not self.closing:
+                    await check.interrupt()
+            finally:
+                check.release(interrupted=not check.terminal_received)
+                self.reconciling = False
 
     async def connect(self) -> None:
         if self.task is None:

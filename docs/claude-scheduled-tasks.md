@@ -39,11 +39,13 @@ history or send hidden model requests to enumerate tasks.
 
 Successful `CronCreate`, `CronDelete` and `CronList` results update AA's observed
 task IDs. When the set becomes empty, the connection can close after its response.
-Native one-shot completion and expiration do not provide equivalent SDK hook
-notifications. Consequently, an idle process can remain open until a subsequent
-`CronList`/`CronDelete` confirms an empty set or the runtime stops. AA does not make
-extra model calls to reconcile this state. These hints also do not discover all
-tasks in a previously unregistered, externally imported Claude session.
+After a scheduled turn completes, AA sends one maintenance request asking Claude
+to call `CronList`. The maintenance request is restricted by a pre-tool hook to
+`CronList` (and `ToolSearch` when needed). An empty, valid list closes the idle
+connection; a non-empty list updates the observed IDs and keeps it open. If the
+check fails or returns an invalid list, AA keeps the connection rather than risk
+dropping a task. These hints also do not discover all tasks in a previously
+unregistered, externally imported Claude session.
 
 ## Validation
 
