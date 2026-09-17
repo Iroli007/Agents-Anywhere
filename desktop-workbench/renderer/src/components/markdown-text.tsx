@@ -5,6 +5,8 @@ import { toast } from "sonner"
 import { copyText } from "@/lib/clipboard"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import remarkMath from "remark-math"
+import rehypeKatex from "rehype-katex"
 import { Copy, Check, ExternalLink, GitBranch } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -56,7 +58,8 @@ function MarkdownBody({
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkGitDirectiveBadges]}
+        remarkPlugins={[remarkGfm, remarkGitDirectiveBadges, remarkMath]}
+        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, trust: false }]]}
         components={{
           pre({ node, children, ...props }) {
             const block = node?.children[0]
@@ -171,7 +174,7 @@ function MarkdownBody({
               </td>
             )
           },
-          span({ children, ...props }) {
+          span({ children, node: _node, ...props }) {
             const directiveProps = props as React.HTMLAttributes<HTMLSpanElement> & {
               "data-git-actions"?: string
               "data-git-directive"?: string
