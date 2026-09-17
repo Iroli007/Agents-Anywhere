@@ -194,6 +194,13 @@ body {
   overscroll-behavior: contain;
 }
 
+/* Display math can be wider than the message column: scroll instead of overflowing. */
+.katex-display {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
 .hljs-keyword,
 .hljs-selector-tag,
 .hljs-built_in,
