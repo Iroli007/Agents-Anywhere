@@ -49,7 +49,7 @@ import { timelineRunCounts } from "@/components/session/timeline-summary"
 import { needsOlderTimelinePage } from "@/components/session/timeline-autofill"
 import { createTimelineScrollFollow } from "@/components/session/timeline-scroll-follow"
 import { createSessionEventBuffer } from "@/components/session/session-event-buffer"
-import { enqueueMessage, readMessageQueue, subscribeMessageQueue, emptyMessageQueue, drainMessageQueue, sendQueuedMessageNow } from "@/components/session/message-queue"
+import { enqueueMessage, readMessageQueue, subscribeMessageQueue, emptyMessageQueue, drainMessageQueue, sendQueuedMessageNow, messageQueueIsPaused, pauseMessageQueue, resumeMessageQueue, freshMessageGoesToQueue } from "@/components/session/message-queue"
 import { CAPABILITY, capabilityIsUsable } from "@/components/session/capabilities"
 import { SessionMessageQueue } from "@/components/session/session-message-queue"
 import { SessionComposer, type AttachedFile } from "@/components/session/session-composer"
@@ -350,6 +350,11 @@ export function SessionDetail({
     subscribeMessageQueue,
     React.useCallback(() => readMessageQueue(sessionId), [sessionId]),
     emptyMessageQueue,
+  )
+  const queuePaused = React.useSyncExternalStore(
+    subscribeMessageQueue,
+    React.useCallback(() => messageQueueIsPaused(sessionId), [sessionId]),
+    () => false,
   )
   const sendInFlightRef = React.useRef(false)
   const activeSessionIdRef = React.useRef(sessionId)
@@ -1197,7 +1202,7 @@ export function SessionDetail({
       attachment.uploaded ? [attachment.uploaded] : [],
     )
     if (uploadedAttachments.length !== attachments.length) return false
-    if (mode === "queue" || (!mode && !queuedMessageId && queuedMessages.length > 0)) {
+    if (!queuedMessageId && freshMessageGoesToQueue(session.id, { mode, queuedCount: queuedMessages.length })) {
       enqueueMessage(session.id, {
         id: createClientId("msg"), content,
         attachments: attachments.map(attachment => ({
@@ -1212,6 +1217,7 @@ export function SessionDetail({
     }
     if (sendInFlightRef.current) return false
     sendInFlightRef.current = true
+    const resumeQueueAfterSend = !queuedMessageId && !mode && messageQueueIsPaused(session.id)
     const clientMessageId = queuedMessageId ?? createClientId("msg")
     const messageText = content.trim() || tNew("attachmentOnlyPrompt")
     timelineFollowRef.current?.resume()
@@ -1266,6 +1272,7 @@ export function SessionDetail({
       if (mode === "steer" && (result.result as { steered?: boolean })?.steered === false) {
         throw new Error(tSession("steerFailed"))
       }
+      if (resumeQueueAfterSend) resumeMessageQueue(session.id)
       if (mode === "steer") toast.success(tSession("steered"))
       return true
     } catch (err) {
@@ -1353,6 +1360,9 @@ export function SessionDetail({
 
   const handleInterrupt = async () => {
     if (!session || interrupting) return
+    // Stopping the turn must also hold the queue, and it has to happen before the request
+    // settles: once the turn ends the drain effect would otherwise send the next message.
+    pauseMessageQueue(session.id)
     setInterrupting(true)
     try {
       await dashboardApi.interruptSession(token, session.id)
@@ -1839,6 +1849,7 @@ export function SessionDetail({
             key={sessionId}
             sessionId={sessionId}
             messages={queuedMessages}
+            paused={queuePaused}
             canSendNow={Boolean(session.takeover && !session.archived && session.connectorStatus === "online" && !sending && !interrupting && (
               runtimeStatus === "idle"
                 ? capabilityIsUsable(effectiveCapabilities, CAPABILITY.sendMessage, sessionRuntimeScope)
@@ -1852,6 +1863,7 @@ export function SessionDetail({
             runtimeState={runtimeState}
             pendingInteractionCount={blockingInteractionCount}
             creatingSession={isLocalOptimisticSession}
+            attachedAbove={queuedMessages.length > 0}
             sending={sending}
             interrupting={interrupting}
             takeoverBusy={takeoverBusy}

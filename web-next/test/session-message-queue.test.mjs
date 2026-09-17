@@ -21,12 +21,14 @@ hooks.deregister()
 const { useSyncExternalStore } = await import("react")
 const messages = JSON.parse(readFileSync(new URL("../messages/zh-CN.json", import.meta.url)))
 
-async function renderQueue(t, sessionId) {
+async function renderQueue(t, sessionId, contents = ["原文字"], options = {}) {
   const sends = []
-  enqueueMessage(sessionId, { id: "message", content: "原文字", attachments: [], selections: {}, status: "queued" })
+  contents.forEach((content, index) => {
+    enqueueMessage(sessionId, { id: index === 0 ? "message" : `message-${index}`, content, attachments: [], selections: {}, status: options.status ?? "queued" })
+  })
   function Fixture() {
     const queue = useSyncExternalStore(subscribeMessageQueue, () => readMessageQueue(sessionId), emptyMessageQueue)
-    return h(NextIntlClientProvider, { locale: "zh-CN", messages }, h(SessionMessageQueue, { sessionId, messages: queue, canSendNow: true, onSendNow: id => sends.push(id) }))
+    return h(NextIntlClientProvider, { locale: "zh-CN", messages }, h(SessionMessageQueue, { sessionId, messages: queue, paused: options.paused ?? false, canSendNow: true, onSendNow: id => sends.push(id) }))
   }
   const container = document.createElement("div")
   document.body.append(container)
@@ -36,9 +38,10 @@ async function renderQueue(t, sessionId) {
   return { container, sends }
 }
 
-async function click(container, text) {
-  const button = [...container.querySelectorAll("button")].find(button => button.textContent === text)
-  assert.ok(button, `Missing button: ${text}`)
+async function click(container, name) {
+  // Action buttons are icon-only now, so match the accessible name first and fall back to visible text.
+  const button = [...container.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === name || button.textContent === name)
+  assert.ok(button, `Missing button: ${name}`)
   await act(async () => button.click())
 }
 
@@ -71,4 +74,76 @@ test("send now targets the selected message and delete immediately removes it", 
   await click(container, "删除")
   assert.deepEqual(readMessageQueue("ui-actions"), [])
   assert.equal(container.textContent, "")
+})
+
+test("several queued messages collapse into a count and open on demand", async t => {
+  const { container } = await renderQueue(t, "ui-collapse", ["第一条消息", "第二条消息"])
+  assert.equal(container.textContent.includes("2 条排队消息"), true)
+  assert.equal(container.textContent.includes("第一条消息"), false)
+  await click(container, "展开排队消息")
+  assert.equal(container.textContent.includes("第一条消息"), true)
+  assert.equal(container.textContent.includes("第二条消息"), true)
+  await click(container, "收起排队消息")
+  assert.equal(container.textContent.includes("第一条消息"), false)
+})
+
+test("a single queued message stays visible without a header", async t => {
+  const { container } = await renderQueue(t, "ui-single", ["只有一条"])
+  assert.equal(container.textContent.includes("只有一条"), true)
+  assert.equal(container.textContent.includes("条排队消息"), false)
+})
+
+test("a paused queue keeps its header and says so, even for one message", async t => {
+  const { container } = await renderQueue(t, "ui-paused", ["只有一条"], { paused: true })
+  assert.equal(container.textContent.includes("队列已暂停"), true)
+  assert.equal(container.textContent.includes("1 条排队消息"), true)
+})
+
+test("a failed message has no separate retry control; send now covers it", async t => {
+  const { container } = await renderQueue(t, "ui-failed", ["失败的那条"], { status: "failed" })
+  const labels = [...container.querySelectorAll("button")].map(button => button.getAttribute("aria-label")).filter(Boolean)
+  assert.equal(labels.includes("重试"), false)
+  assert.equal(labels.includes("立即发送"), true)
+  assert.equal(container.textContent.includes("失败的那条"), true)
+})
+
+test("a paused queue locks send now until the queue resumes", async t => {
+  const { container } = await renderQueue(t, "ui-paused-lock", ["卡住的那条"], { paused: true })
+  await click(container, "展开排队消息")
+  assert.equal(container.querySelector('button[aria-label="立即发送"]').disabled, true)
+  const { container: running } = await renderQueue(t, "ui-paused-unlocked", ["可以发的"])
+  assert.equal(running.querySelector('button[aria-label="立即发送"]').disabled, false)
+})
+
+test("adding another message keeps an active draft mounted and prevents collapse until saved", async t => {
+  const sessionId = "ui-edit-append"
+  const { container } = await renderQueue(t, sessionId)
+  await click(container, "原文字")
+  await type(container, "未保存的修改")
+  const editor = container.querySelector("textarea")
+  await act(async () => enqueueMessage(sessionId, { id: "second", content: "第二条", attachments: [], selections: {}, status: "queued" }))
+  assert.equal(container.querySelector("textarea"), editor)
+  assert.equal(editor.value, "未保存的修改")
+  assert.equal(readMessageQueue(sessionId)[0].editing, true)
+  assert.equal(container.querySelector('button[aria-label="收起排队消息"]').disabled, true)
+  await click(container, "收起排队消息")
+  assert.equal(container.querySelector("textarea"), editor)
+  await click(container, "保存")
+  assert.equal(readMessageQueue(sessionId)[0].content, "未保存的修改")
+  assert.equal(readMessageQueue(sessionId)[0].editing, false)
+  await click(container, "展开排队消息")
+  assert.equal(container.textContent.includes("未保存的修改"), true)
+})
+
+test("manual collapse is disabled during editing and works after cancelling", async t => {
+  const { container } = await renderQueue(t, "ui-edit-collapse", ["第一条", "第二条"])
+  await click(container, "展开排队消息")
+  await click(container, "第一条")
+  await type(container, "临时草稿")
+  await click(container, "收起排队消息")
+  assert.equal(container.querySelector("textarea").value, "临时草稿")
+  await click(container, "取消")
+  await click(container, "收起排队消息")
+  assert.equal(container.querySelector('[aria-expanded="false"]') !== null, true)
+  assert.equal(readMessageQueue("ui-edit-collapse")[0].content, "第一条")
 })

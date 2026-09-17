@@ -72,12 +72,14 @@ export function SessionComposer({
   onInterrupt,
   onCommand,
   onToggleTakeover,
+  attachedAbove = false,
 }: {
   token: string
   session: SessionView
   runtimeState?: SessionRuntimeState | null
   pendingInteractionCount: number
   creatingSession?: boolean
+  attachedAbove?: boolean
   sending: boolean
   interrupting: boolean
   takeoverBusy: boolean
@@ -377,7 +379,7 @@ export function SessionComposer({
 
   return (
     <div
-      className="shrink-0 px-4 pb-4 pt-2"
+      className={cn("shrink-0 px-4 pb-4", attachedAbove ? "pt-0" : "pt-2")}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
