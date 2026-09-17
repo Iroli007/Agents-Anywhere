@@ -19,6 +19,14 @@ import {
 import { PinnedSection } from "@/components/sidebar/pinned-section"
 import { RecentSessionsSection } from "@/components/sidebar/recent-sessions-section"
 import {
+  filterProjectSessions,
+  resolveProjectIdentity,
+  sessionIdentityLabel,
+  shouldShowProjectIdentity,
+  workspaceHasMultipleAgents,
+  workspaceHasMultipleDevices,
+} from "@/components/sidebar/project-identity"
+import {
   selectPinnedProjects,
   selectPinnedSessions,
   selectAllSessions,
@@ -37,8 +45,9 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar"
-import { useWorkspace } from "@/components/workspace-context"
+import { useWorkspace, type WorkspaceSessionView } from "@/components/workspace-context"
 import { dashboardApi } from "@/features/dashboard/api"
+import { defaultFilter } from "@/lib/demo-api"
 import type { ProjectView } from "@/features/dashboard/types"
 import { useMobileConnectionsSidebarVisibility } from "@/features/mobile-connections/sidebar-visibility"
 import { useTranslations } from "next-intl"
@@ -60,6 +69,7 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
     navigateToDevice,
     startProjectSession,
     sidebarShowsSessions,
+    setFilter,
     createProject,
     updateProject,
     archiveProjectSessions,
@@ -80,15 +90,20 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
     React.useState<ProjectSessionStatusFilter>("active")
 
   const pinnedProjects = React.useMemo(
-    () => selectPinnedProjects(projects, sessions, projectSessionStatus),
-    [projectSessionStatus, projects, sessions],
+    () => selectPinnedProjects(projects, sessions, projectSessionStatus, filter),
+    [filter, projectSessionStatus, projects, sessions],
   )
   const pinnedSessions = React.useMemo(
     () => selectPinnedSessions(sessions),
     [sessions],
   )
   const regularProjects = React.useMemo(
-    () => selectRegularProjects(projects, sessions, projectSessionStatus),
+    () => selectRegularProjects(projects, sessions, projectSessionStatus, filter),
+    [filter, projectSessionStatus, projects, sessions],
+  )
+  // Same list without the device/Agent gate, used to explain an empty section.
+  const projectsWithoutDeviceAgentFilter = React.useMemo(
+    () => selectRegularProjects(projects, sessions, projectSessionStatus, defaultFilter),
     [projectSessionStatus, projects, sessions],
   )
   const allSessions = React.useMemo(
@@ -103,14 +118,50 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
     const projectIds = new Set(projects.map((project) => project.id))
     return allSessions.filter((session) => !session.projectId || !projectIds.has(session.projectId))
   }, [allSessions, projects])
+  const hiddenByDeviceAgentFilter = !isLoading
+    && regularProjects.length === 0
+    && projectsWithoutDeviceAgentFilter.length > 0
+
+  // Identity labels stay off for single-device, single-Agent workspaces.
+  const identityOptions = React.useMemo(() => ({
+    multipleDevices: workspaceHasMultipleDevices(connectors),
+    multipleAgents: workspaceHasMultipleAgents(sessions),
+  }), [connectors, sessions])
+  const identityLabelsVisible = identityOptions.multipleDevices || identityOptions.multipleAgents
 
   const sessionsForProject = React.useCallback(
     (projectId: string, status: ProjectSessionStatusFilter = "active") => selectProjectSessions(
       projectSessionsById[projectId] ?? [],
       status,
+      filter,
     ),
-    [projectSessionsById],
+    [filter, projectSessionsById],
   )
+
+  const identityForProject = React.useCallback(
+    // Identity follows the active device/Agent filter, so the label never
+    // contradicts the sessions the row would actually expand into.
+    (project: ProjectView) => resolveProjectIdentity(
+      project,
+      filterProjectSessions(projectSessionsById[project.id] ?? [], filter),
+      connectors,
+    ),
+    [connectors, filter, projectSessionsById],
+  )
+
+  const showIdentityForProject = React.useCallback(
+    (project: ProjectView) => shouldShowProjectIdentity(project, projects, identityOptions),
+    [identityOptions, projects],
+  )
+
+  const sessionMeta = React.useCallback(
+    (session: WorkspaceSessionView) => (
+      identityLabelsVisible ? sessionIdentityLabel(session, connectors) : null
+    ),
+    [connectors, identityLabelsVisible],
+  )
+
+  const clearDeviceAgentFilter = React.useCallback(() => setFilter(defaultFilter), [setFilter])
 
   const markAllRead = React.useCallback(async () => {
     if (!authSession?.accessToken) return
@@ -168,6 +219,8 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
 
   const projectController: ProjectListController = {
     sessionsForProject,
+    identityForProject,
+    showIdentityForProject,
     expandedProjectIds,
     activeSessionId,
     onExpandedChange: setProjectExpanded,
@@ -233,6 +286,7 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
           isLoading={isLoading}
           projectController={projectController}
           projectSessionStatus={projectSessionStatus}
+          sessionMeta={sessionMeta}
           onOpenSession={openSession}
           onToggleSessionPin={togglePinSession}
           onToggleSessionArchive={requestToggleSessionArchive}
@@ -245,6 +299,7 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
             sessions={allSessions}
             isLoading={isLoading}
             activeSessionId={activeSessionId}
+            sessionMeta={sessionMeta}
             onMarkAllRead={markAllRead}
             onOpenSession={openSession}
             onToggleSessionPin={togglePinSession}
@@ -259,6 +314,8 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
               expanded={projectsExpanded}
               controller={projectController}
               sessionStatus={projectSessionStatus}
+              hiddenByDeviceAgentFilter={hiddenByDeviceAgentFilter}
+              onClearDeviceAgentFilter={clearDeviceAgentFilter}
               onExpandedChange={setProjectsExpanded}
               onSessionStatusChange={setProjectSessionStatus}
               onAddProject={() => setProjectEditor({ mode: "create" })}
@@ -269,6 +326,7 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
                 sessions={unassignedSessions}
                 isLoading={isLoading}
                 activeSessionId={activeSessionId}
+                sessionMeta={sessionMeta}
                 onMarkAllRead={markAllRead}
                 onOpenSession={openSession}
                 onToggleSessionPin={togglePinSession}

@@ -37,6 +37,10 @@ import {
 import type { WorkspaceSessionView } from "@/components/workspace-context"
 import { SessionSidebarItem } from "@/components/sidebar/session-sidebar-item"
 import { OverflowMarquee } from "@/components/sidebar/overflow-marquee"
+import {
+  projectIdentityLabel,
+  type ProjectIdentity,
+} from "@/components/sidebar/project-identity"
 import type { ProjectView } from "@/features/dashboard/types"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
@@ -44,6 +48,8 @@ import { useTranslations } from "next-intl"
 export function ProjectSidebarItem({
   project,
   sessions,
+  identity,
+  showIdentity,
   expanded,
   activeSessionId,
   onExpandedChange,
@@ -58,6 +64,8 @@ export function ProjectSidebarItem({
 }: {
   project: ProjectView
   sessions: WorkspaceSessionView[]
+  identity: ProjectIdentity
+  showIdentity: boolean
   expanded: boolean
   activeSessionId: string | null
   onExpandedChange: (open: boolean) => void
@@ -74,10 +82,17 @@ export function ProjectSidebarItem({
   const [nameHovered, setNameHovered] = React.useState(false)
   const [optionsOpen, setOptionsOpen] = React.useState(false)
   const containsActiveSession = sessions.some((session) => session.id === activeSessionId)
+  // The identity line is the second row; it only earns the extra height when
+  // the workspace actually has ambiguous devices, Agents, or project names.
+  const identityLine = showIdentity ? projectIdentityLabel(identity) : null
+  const agentSummary = identity.agents
+    .map((agent) => agent.sessionCount > 1 ? `${agent.label} ×${agent.sessionCount}` : agent.label)
+    .join(", ")
 
   return (
     <SidebarMenuItem>
       <Collapsible open={expanded} onOpenChange={onExpandedChange}>
+        <TooltipProvider delayDuration={300}>
         <div
           className="group/project relative"
           onPointerEnter={() => setNameHovered(true)}
@@ -87,11 +102,42 @@ export function ProjectSidebarItem({
             <SidebarMenuButton
               className={cn(
                 "pr-[4.75rem] text-muted-foreground",
+                identityLine && "h-auto",
                 containsActiveSession && "text-foreground",
               )}
             >
               {expanded ? <FolderOpen /> : <Folder />}
-              <OverflowMarquee text={project.name} active={nameHovered} />
+              {identityLine ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <OverflowMarquee
+                        text={project.name}
+                        active={nameHovered}
+                        className="w-full flex-none"
+                      />
+                      <span className="block min-w-0 truncate text-[11px] leading-4 text-muted-foreground/80">
+                        {identityLine}
+                      </span>
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent
+                    side="right"
+                    sideOffset={6}
+                    className="w-64 flex-col items-start gap-0.5"
+                  >
+                    <span className="truncate font-medium">{identity.deviceName}</span>
+                    <span className="code-mono break-all text-[11px] opacity-80">
+                      {identity.workspacePath}
+                    </span>
+                    {agentSummary ? (
+                      <span className="text-[11px] opacity-80">{agentSummary}</span>
+                    ) : null}
+                  </TooltipContent>
+                </Tooltip>
+              ) : (
+                <OverflowMarquee text={project.name} active={nameHovered} />
+              )}
             </SidebarMenuButton>
           </CollapsibleTrigger>
 
@@ -160,6 +206,7 @@ export function ProjectSidebarItem({
             </div>
           </TooltipProvider>
         </div>
+        </TooltipProvider>
 
         <CollapsibleContent>
           <SidebarMenu>
