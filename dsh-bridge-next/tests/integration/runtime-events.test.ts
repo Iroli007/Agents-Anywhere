@@ -84,10 +84,19 @@ test('one corrupt persisted session does not break inventory, healthy streaming 
   } finally { stream?.feed.close(); await fixture.ctx.fiber.dispose(); await rm(home, { recursive: true, force: true }) }
 })
 
-test('fast mixed native events flush at 30 Hz with complete final text, tool results and ordered completion', { timeout: 30_000 }, async () => {
+test('fast mixed native events flush at 30 Hz with complete final text, tool results and ordered completion', { timeout: 30_000 }, async (t) => {
   const home = await mkdtemp(join(tmpdir(), 'dsh-flush-'))
   const fixture = await nativeRuntime(home)
   const native = fixture.ctx.agentsAnywhereRuntime.native
+  const log = native.diagnostics.log.bind(native.diagnostics)
+  let batchLogs = 0
+  t.mock.method(native.diagnostics, 'log', (...args: Parameters<typeof log>) => {
+    // A slow log sink must not consume the interval between actual deliveries.
+    if (args[1] === 'sync.batch' && ++batchLogs % 2 === 1) {
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, SYNC_FLUSH_MS * 2)
+    }
+    log(...args)
+  })
   const batches: SyncBatch[] = [], times: number[] = [], errors: unknown[] = []
   const feed = new SyncFeed(native, 'test', batch => {
     times.push(performance.now()); batches.push(batch)

@@ -136,6 +136,8 @@ export class SyncFeed {
       try {
         this.native.diagnostics.log('debug', 'sync.batch', { streamId: this.id, batchSeq: batch.batchSeq, operations: operations.length, kinds: operations.map(op => op.kind).join(',') })
         this.notify(batch)
+        // Start the next interval after delivery, including time spent in logging and notify.
+        this.lastSentAt = performance.now()
       } catch (error) {
         clearTimeout(timer); this.waitAck = undefined
         reject(new SyncTransportError('DSH event delivery failed', { cause: error }))
