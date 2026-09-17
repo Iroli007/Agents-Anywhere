@@ -316,6 +316,7 @@
       "title": "Couldn't load dashboard"
     },
     "filters": {
+      "deviceAgentAria": "Filter projects by device and agent",
       "active": "Active",
       "all": "All",
       "allActive": "Active sessions",

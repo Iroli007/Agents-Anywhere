@@ -310,6 +310,7 @@
       "team": "团队"
     },
     "filters": {
+      "deviceAgentAria": "按设备与 Agent 筛选项目",
       "active": "活跃",
       "all": "全部",
       "allActive": "活跃会话",

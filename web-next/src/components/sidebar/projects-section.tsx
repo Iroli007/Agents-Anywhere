@@ -131,7 +131,7 @@ export function ProjectsSection({
         >
           <div className="flex min-w-0 items-center gap-1">
             <SidebarSectionTrigger label={t("sections.projects")} expanded={expanded} />
-            <SessionFilterMenu />
+            <SessionFilterMenu ariaLabel={t("filters.deviceAgentAria")} />
           </div>
           <div className="flex items-center gap-0.5">
             <DropdownMenu open={filterOpen} onOpenChange={setFilterOpen}>
