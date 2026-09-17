@@ -59,3 +59,37 @@ test("malformed LaTeX renders without throwing", async (t) => {
   assert.match(container.textContent, /\\frac\{1\}\{/, `expected the raw source to survive, got: ${container.textContent}`)
   assert.doesNotMatch(container.textContent, /\$/, `expected the delimiters to be consumed, got: ${container.textContent}`)
 })
+
+for (const text of [
+  String.raw`$$\sum_{n=1}^{\infty}\frac{1}{n^2}$$`,
+  String.raw`Before $$\sum_{n=1}^{\infty}\frac{1}{n^2}$$ after $$x^2$$.`,
+  String.raw`> $$\sum_{n=1}^{\infty}\frac{1}{n^2}$$`,
+]) {
+  test(`same-line double dollars use display layout: ${text}`, async (t) => {
+    const container = await render(t, text)
+    assert.equal(container.querySelectorAll('.katex-display').length, text.includes('after') ? 2 : 1)
+    assert.ok(container.querySelector('.katex-display .op-limits'))
+    assert.equal(container.querySelector('.katex-error'), null)
+  })
+}
+
+test('chemistry commands render with mhchem', async (t) => {
+  const container = await render(t, String.raw`$\ce{2H2 + O2 -> 2H2O}$`)
+  assert.ok(container.querySelector('.katex'))
+  assert.ok(!container.querySelector('.katex-error, [style*="--destructive"], [style*="#cc0000"], [style*="rgb(204, 0, 0)"]'))
+  assert.ok(container.querySelector('msub'))
+})
+
+test('invalid and unsupported formulas use the theme error color', async (t) => {
+  const container = await render(t, String.raw`$\frac{1}{$ and $\unknowncommand{x}$`)
+  const errors = container.querySelectorAll('[style*="color"]')
+  assert.ok(errors.length >= 2)
+  for (const error of errors) assert.equal(error.style.color, 'var(--destructive)')
+})
+
+test('code and escaped dollars remain literal', async (t) => {
+  const container = await render(t, '`$$x^2$$` and \\$5\n\n```text\n$$x^2$$\n```')
+  assert.equal(container.querySelector('.katex'), null)
+  assert.ok(container.textContent.includes('$$x^2$$'))
+  assert.ok(container.textContent.includes('$5'))
+})

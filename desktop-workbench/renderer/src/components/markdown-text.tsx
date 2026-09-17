@@ -7,6 +7,7 @@ import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
 import remarkMath from "remark-math"
 import rehypeKatex from "rehype-katex"
+import "katex/contrib/mhchem"
 import { Copy, Check, ExternalLink, GitBranch } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -58,8 +59,8 @@ function MarkdownBody({
       )}
     >
       <ReactMarkdown
-        remarkPlugins={[remarkGfm, remarkGitDirectiveBadges, remarkMath]}
-        rehypePlugins={[[rehypeKatex, { throwOnError: false, strict: false, trust: false }]]}
+        remarkPlugins={[remarkGfm, remarkGitDirectiveBadges, remarkMath, remarkDisplayMath]}
+        rehypePlugins={[[rehypeKatex, { strict: false, trust: false, errorColor: "var(--destructive)" }]]}
         components={{
           pre({ node, children, ...props }) {
             const block = node?.children[0]
@@ -216,9 +217,28 @@ type MarkdownAstNode = {
   type: string
   value?: string
   children?: MarkdownAstNode[]
+  position?: { start: { offset?: number } }
   data?: {
     hName?: string
-    hProperties?: Record<string, string>
+    hProperties?: Record<string, string | string[]>
+  }
+}
+
+function remarkDisplayMath() {
+  return (tree: MarkdownAstNode, file: { value: unknown }) => {
+    const source = String(file.value)
+    function visit(node: MarkdownAstNode) {
+      const offset = node.position?.start.offset
+      // remark-math treats same-line $$...$$ as inline math; preserve display intent.
+      if (node.type === "inlineMath" && offset !== undefined && source.startsWith("$$", offset)) {
+        node.data = {
+          ...node.data,
+          hProperties: { className: ["language-math", "math-display"] },
+        }
+      }
+      node.children?.forEach(visit)
+    }
+    visit(tree)
   }
 }
 
