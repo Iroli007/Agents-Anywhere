@@ -5,15 +5,11 @@ import { registerSource } from "./helpers/onboarding-source.mjs"
 const hooks = registerSource()
 const {
   filterProjectSessions,
-  hasDuplicateProjectName,
   isDeviceAgentFilterActive,
   projectIdentityLabel,
   projectMatchesDeviceAgentFilter,
   resolveProjectIdentity,
   sessionIdentityLabel,
-  shouldShowProjectIdentity,
-  workspaceHasMultipleAgents,
-  workspaceHasMultipleDevices,
 } = await import("../src/components/sidebar/project-identity.ts")
 const { projectHasVisibleSessions } = await import("../src/components/sidebar/project-visibility.ts")
 const {
@@ -170,21 +166,27 @@ test("an expanded project hides the sessions of other devices and Agents", () =>
   )
 })
 
-test("a same-named project on another device is flagged for an identity hint", () => {
-  const local = project("p1", { name: "api", connectorId: "conn-a" })
-  const remote = project("p2", { name: "api", connectorId: "conn-b" })
-  const unique = project("p3", { name: "web" })
-  const projects = [local, remote, unique]
+test("a row label only carries the dimensions that are filtered", () => {
+  const identity = {
+    deviceName: "MacBook Pro",
+    deviceOs: "macos",
+    workspacePath: "/work/p1",
+    agents: [agent("codex", "Codex", 2), agent("claude", "Claude Code", 1)],
+  }
 
-  assert.equal(hasDuplicateProjectName(local, projects), true)
-  assert.equal(hasDuplicateProjectName(remote, projects), true)
-  assert.equal(hasDuplicateProjectName(unique, projects), false)
-  assert.equal(hasDuplicateProjectName(local, [local]), false)
-
-  assert.equal(shouldShowProjectIdentity(local, projects, { multipleDevices: false, multipleAgents: false }), true)
-  assert.equal(shouldShowProjectIdentity(unique, projects, { multipleDevices: false, multipleAgents: false }), false)
-  assert.equal(shouldShowProjectIdentity(unique, projects, { multipleDevices: true, multipleAgents: false }), true)
-  assert.equal(shouldShowProjectIdentity(unique, projects, { multipleDevices: false, multipleAgents: true }), true)
+  // 全部设备 + 全部 Agent：不出这一行
+  assert.equal(projectIdentityLabel(identity, { includeDevice: false, includeAgents: false }), null)
+  // 具体设备 + 全部 Agent：只有设备名
+  assert.equal(projectIdentityLabel(identity, { includeDevice: true, includeAgents: false }), "MacBook Pro")
+  // 全部设备 + 具体 Agent：只有 Agent
+  assert.equal(projectIdentityLabel(identity, { includeDevice: false, includeAgents: true }), "Codex +1")
+  // 具体设备 + 具体 Agent：两者都给
+  assert.equal(projectIdentityLabel(identity, { includeDevice: true, includeAgents: true }), "MacBook Pro · Codex +1")
+  // 设备名缺失时，具体设备+全部 Agent 也不出这一行
+  assert.equal(
+    projectIdentityLabel({ ...identity, deviceName: "  ", agents: [] }, { includeDevice: true, includeAgents: false }),
+    null,
+  )
 })
 
 test("session rows and workspace flags keep device and Agent identity available", () => {
@@ -199,11 +201,27 @@ test("session rows and workspace flags keep device and Agent identity available"
     "Build Box · DeepSeek Harness",
   )
   assert.equal(sessionIdentityLabel(session("p1", "codex"), []), "conn-a · Codex")
+  assert.equal(
+    sessionIdentityLabel(session("p1", "codex"), connectors, { includeDevice: false, includeAgents: false }),
+    null,
+  )
+  assert.equal(
+    sessionIdentityLabel(session("p1", "codex"), connectors, { includeDevice: true, includeAgents: false }),
+    "MacBook Pro",
+  )
+  assert.equal(
+    sessionIdentityLabel(session("p1", "codex"), connectors, { includeDevice: false, includeAgents: true }),
+    "Codex",
+  )
 
-  assert.equal(workspaceHasMultipleDevices(connectors), true)
-  assert.equal(workspaceHasMultipleDevices([connector("conn-a", "MacBook Pro")]), false)
-  assert.equal(workspaceHasMultipleAgents([session("p1", "codex"), session("p2", "codex")]), false)
-  assert.equal(workspaceHasMultipleAgents([session("p1", "codex"), session("p2", "claude")]), true)
+  assert.equal(
+    sessionIdentityLabel(session("p1", "dsh", { runtimeTypeDisplayName: "DeepSeek Harness" }), connectors, { includeAgents: false }),
+    "MacBook Pro",
+  )
+  assert.equal(
+    sessionIdentityLabel(session("p1", "dsh", { runtimeTypeDisplayName: "DeepSeek Harness" }), connectors, { includeAgents: true }),
+    "MacBook Pro · DeepSeek Harness",
+  )
 })
 
 test("identity read from filtered sessions never contradicts the Agent filter", () => {

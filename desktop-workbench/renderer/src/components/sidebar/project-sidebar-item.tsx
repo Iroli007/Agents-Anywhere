@@ -39,6 +39,7 @@ import { SessionSidebarItem } from "@/components/sidebar/session-sidebar-item"
 import { OverflowMarquee } from "@/components/sidebar/overflow-marquee"
 import {
   projectIdentityLabel,
+  type IdentityParts,
   type ProjectIdentity,
 } from "@/components/sidebar/project-identity"
 import type { ProjectView } from "@/features/dashboard/types"
@@ -49,7 +50,7 @@ export function ProjectSidebarItem({
   project,
   sessions,
   identity,
-  showIdentity,
+  identityParts,
   expanded,
   activeSessionId,
   onExpandedChange,
@@ -65,7 +66,7 @@ export function ProjectSidebarItem({
   project: ProjectView
   sessions: WorkspaceSessionView[]
   identity: ProjectIdentity
-  showIdentity: boolean
+  identityParts: IdentityParts
   expanded: boolean
   activeSessionId: string | null
   onExpandedChange: (open: boolean) => void
@@ -82,9 +83,9 @@ export function ProjectSidebarItem({
   const [nameHovered, setNameHovered] = React.useState(false)
   const [optionsOpen, setOptionsOpen] = React.useState(false)
   const containsActiveSession = sessions.some((session) => session.id === activeSessionId)
-  // The identity line is the second row; it only earns the extra height when
-  // the workspace actually has ambiguous devices, Agents, or project names.
-  const identityLine = showIdentity ? projectIdentityLabel(identity) : null
+  // The identity line is the second row and only carries the dimensions that
+  // are filtered right now; `null` keeps the row exactly as it was before.
+  const identityLine = projectIdentityLabel(identity, identityParts)
   const agentSummary = identity.agents
     .map((agent) => agent.sessionCount > 1 ? `${agent.label} ×${agent.sessionCount}` : agent.label)
     .join(", ")

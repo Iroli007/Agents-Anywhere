@@ -23,9 +23,6 @@ import {
   filterProjectSessions,
   resolveProjectIdentity,
   sessionIdentityLabel,
-  shouldShowProjectIdentity,
-  workspaceHasMultipleAgents,
-  workspaceHasMultipleDevices,
 } from "@/components/sidebar/project-identity"
 import {
   selectPinnedProjects,
@@ -125,12 +122,13 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
     && regularProjects.length === 0
     && projectsWithoutDeviceAgentFilter.length > 0
 
-  // Identity labels stay off for single-device, single-Agent workspaces.
-  const identityOptions = React.useMemo(() => ({
-    multipleDevices: workspaceHasMultipleDevices(connectors),
-    multipleAgents: workspaceHasMultipleAgents(sessions),
-  }), [connectors, sessions])
-  const identityLabelsVisible = identityOptions.multipleDevices || identityOptions.multipleAgents
+  // A row only shows the dimension that is actually filtered: with "all
+  // devices" the device name stays off, with "all Agents" the Agent stays off,
+  // and with both on "all" the row keeps its original single line.
+  const identityParts = React.useMemo(() => ({
+    includeDevice: filter.connectorId !== "all",
+    includeAgents: filter.runtime !== "all",
+  }), [filter.connectorId, filter.runtime])
 
   const sessionsForProject = React.useCallback(
     (projectId: string, status: ProjectSessionStatusFilter = "active") => selectProjectSessions(
@@ -152,16 +150,9 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
     [connectors, filter, projectSessionsById],
   )
 
-  const showIdentityForProject = React.useCallback(
-    (project: ProjectView) => shouldShowProjectIdentity(project, projects, identityOptions),
-    [identityOptions, projects],
-  )
-
   const sessionMeta = React.useCallback(
-    (session: WorkspaceSessionView) => (
-      identityLabelsVisible ? sessionIdentityLabel(session, connectors) : null
-    ),
-    [connectors, identityLabelsVisible],
+    (session: WorkspaceSessionView) => sessionIdentityLabel(session, connectors, identityParts),
+    [connectors, identityParts],
   )
 
   const clearDeviceAgentFilter = React.useCallback(() => setFilter(defaultFilter), [setFilter])
@@ -223,7 +214,7 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
   const projectController: ProjectListController = {
     sessionsForProject,
     identityForProject,
-    showIdentityForProject,
+    identityParts,
     expandedProjectIds,
     activeSessionId,
     onExpandedChange: setProjectExpanded,

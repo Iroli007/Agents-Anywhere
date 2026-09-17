@@ -79,15 +79,31 @@ export function resolveProjectIdentity(
 }
 
 /**
- * Compact one-line label for a project row, e.g. `MacBook Pro · Codex`.
- * Extra Agents collapse into a `+N` suffix; `null` means nothing to show.
+ * Which halves of the identity belong on the row. A dimension is only shown
+ * while that filter is narrowing the list: with "all devices" the device name
+ * stays off, with "all Agents" the Agent name stays off, and with both on "all"
+ * the row has no second line at all.
  */
-export function projectIdentityLabel(identity: ProjectIdentity): string | null {
+export type IdentityParts = {
+  includeDevice?: boolean
+  includeAgents?: boolean
+}
+
+/**
+ * Compact one-line label for a project row, e.g. `MacBook Pro · Codex`.
+ * `null` means nothing to show.
+ */
+export function projectIdentityLabel(
+  identity: ProjectIdentity,
+  options: IdentityParts = {},
+): string | null {
   const parts: string[] = []
   const deviceName = identity.deviceName.trim()
-  if (deviceName) parts.push(deviceName)
-  const [primary, ...rest] = identity.agents
-  if (primary) parts.push(rest.length > 0 ? `${primary.label} +${rest.length}` : primary.label)
+  if ((options.includeDevice ?? true) && deviceName) parts.push(deviceName)
+  if (options.includeAgents ?? true) {
+    const [primary, ...rest] = identity.agents
+    if (primary) parts.push(rest.length > 0 ? `${primary.label} +${rest.length}` : primary.label)
+  }
   return parts.length > 0 ? parts.join(" · ") : null
 }
 
@@ -95,47 +111,18 @@ export function projectIdentityLabel(identity: ProjectIdentity): string | null {
 export function sessionIdentityLabel(
   session: FilterableSession & { runtimeTypeDisplayName?: string | null },
   connectors: readonly IdentityConnector[],
+  options: IdentityParts = {},
 ): string | null {
-  const deviceName = (connectors.find((item) => item.id === session.connectorId)?.name
-    || session.connectorId
-    || "").trim()
-  const label = session.runtime
+  const deviceName = (options.includeDevice ?? true)
+    ? (connectors.find((item) => item.id === session.connectorId)?.name
+      || session.connectorId
+      || "").trim()
+    : ""
+  const label = (options.includeAgents ?? true) && session.runtime
     ? session.runtimeTypeDisplayName?.trim() || runtimeLabel(session.runtime)
     : ""
   const parts = [deviceName, label].filter(Boolean)
   return parts.length > 0 ? parts.join(" · ") : null
-}
-
-/** True when the workspace spans more than one paired device. */
-export function workspaceHasMultipleDevices(connectors: readonly { id: string }[]): boolean {
-  return new Set(connectors.map((connector) => connector.id)).size > 1
-}
-
-/** True when the workspace spans more than one Agent runtime. */
-export function workspaceHasMultipleAgents(sessions: readonly { runtime?: string }[]): boolean {
-  return new Set(sessions.map((session) => session.runtime).filter(Boolean)).size > 1
-}
-
-/** True when another project shows the same name, which needs an identity hint. */
-export function hasDuplicateProjectName(
-  project: Pick<ProjectView, "id" | "name">,
-  projects: readonly Pick<ProjectView, "id" | "name">[],
-): boolean {
-  const name = project.name.trim()
-  if (!name) return false
-  return projects.some((other) => other.id !== project.id && other.name.trim() === name)
-}
-
-/**
- * Project rows only earn a second line when identity is ambiguous: several
- * devices, several Agents, or a name that collides with another project.
- */
-export function shouldShowProjectIdentity(
-  project: Pick<ProjectView, "id" | "name">,
-  projects: readonly Pick<ProjectView, "id" | "name">[],
-  options: { multipleDevices: boolean; multipleAgents: boolean },
-): boolean {
-  return options.multipleDevices || options.multipleAgents || hasDuplicateProjectName(project, projects)
 }
 
 /** True when the device/Agent gate is actually narrowing the projects list. */

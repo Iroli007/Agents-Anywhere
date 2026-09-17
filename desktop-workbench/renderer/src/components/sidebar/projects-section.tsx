@@ -31,7 +31,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import type { WorkspaceSessionView } from "@/components/workspace-context"
-import type { ProjectIdentity } from "@/components/sidebar/project-identity"
+import type { IdentityParts, ProjectIdentity } from "@/components/sidebar/project-identity"
 import type { ProjectSessionStatusFilter } from "@/components/sidebar/sidebar-selectors"
 import type { ProjectView } from "@/features/dashboard/types"
 import { cn } from "@/lib/utils"
@@ -43,7 +43,8 @@ export type ProjectListController = {
     status?: ProjectSessionStatusFilter,
   ) => WorkspaceSessionView[]
   identityForProject: (project: ProjectView) => ProjectIdentity
-  showIdentityForProject: (project: ProjectView) => boolean
+  /** Which halves of the identity belong on the row (only filtered dimensions). */
+  identityParts: IdentityParts
   expandedProjectIds: string[]
   activeSessionId: string | null
   onExpandedChange: (projectId: string, open: boolean) => void
@@ -74,7 +75,7 @@ export function ProjectList({
           project={project}
           sessions={controller.sessionsForProject(project.id, sessionStatus)}
           identity={controller.identityForProject(project)}
-          showIdentity={controller.showIdentityForProject(project)}
+          identityParts={controller.identityParts}
           expanded={controller.expandedProjectIds.includes(project.id)}
           activeSessionId={controller.activeSessionId}
           onExpandedChange={(open) => controller.onExpandedChange(project.id, open)}
