@@ -22,6 +22,7 @@ import { Input } from "@/components/ui/input"
 import { Separator } from "@/components/ui/separator"
 import { SessionAgentIcon } from "@/components/sidebar/session-agent-icon"
 import { OverflowMarquee } from "@/components/sidebar/overflow-marquee"
+import { SidebarDropIndicator, useSidebarReorderItem } from "@/components/sidebar/sidebar-reorder"
 import {
   SidebarMenuButton,
   SidebarMenuItem,
@@ -43,6 +44,7 @@ export function SessionSidebarItem({
   meta = null,
   inset = false,
   previousConnectorId = null,
+  reorderGroup,
   isActive,
   onOpen,
   onTogglePin,
@@ -55,6 +57,8 @@ export function SessionSidebarItem({
   inset?: boolean
   /** Device of the row above; a repeated device collapses to `^`. */
   previousConnectorId?: string | null
+  /** Rows sharing a group form one list the user can drag to reorder. */
+  reorderGroup: string
   isActive: boolean
   onOpen: () => void
   onTogglePin: () => void
@@ -79,6 +83,7 @@ export function SessionSidebarItem({
   const isWaitingApproval = item.status === "waiting_approval"
   const isUnreadIdle = item.unread && item.status === "idle"
   const hasStatusIndicator = isBusy || isWaitingApproval || isUnreadIdle
+  const { dragProps, placement, dragging } = useSidebarReorderItem({ kind: "sessions", id: item.id, group: reorderGroup })
 
   React.useEffect(() => {
     if (!renameOpen) setTitleDraft(item.title ?? "")
@@ -125,7 +130,8 @@ export function SessionSidebarItem({
         {/* Session rows bleed through the group and content padding so the
             selection reads as a full-width bar. */}
         <SidebarMenuItem
-          className="group/session -mx-4"
+          {...dragProps}
+          className={cn("group/session -mx-4", dragging && "opacity-50")}
           onPointerEnter={() => setNameHovered(true)}
           onPointerLeave={() => setNameHovered(false)}
         >
@@ -225,6 +231,7 @@ export function SessionSidebarItem({
               </div>
             </TooltipProvider>
           ) : null}
+          <SidebarDropIndicator placement={placement} />
         </SidebarMenuItem>
         <ContextMenuContent className="w-52">
           <ContextMenuItem onSelect={onOpen}>
