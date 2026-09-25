@@ -15,6 +15,8 @@
 
 DSH Desktop 已集成此插件，**不需要另行下载或执行 npm 安装命令**。在 DSH Desktop 的“插件”页面找到“远程控制”并启用，然后从左侧边栏“设置”上方打开“远程控制”。部分 Desktop 版本的开关位于“桌面设置”的“手机连接”区域；请以当前应用显示的入口为准。
 
+![DSH Desktop 中的 Agents Anywhere 连接面板，显示账号和 Connector 运行状态](docs/images/remote-control-desktop.png)
+
 首次使用时选择 Agents Anywhere Cloud，或输入自己部署的服务端地址，然后在浏览器中完成登录和授权。按照页面引导添加 Agent，并按需连接手机。若插件检测到 Agents Anywhere Desktop 正在运行，会引导你到该应用继续设置，避免两个应用同时管理同一台工作设备的连接。
 
 插件随 DSH Desktop 一同打包和更新；请通过 Desktop 的发布渠道升级，不要对内置插件叠加独立 npm 安装。
@@ -30,6 +32,12 @@ dsh plugin --profile desktop add @agents-anywhere/dsh-bridge-next
 安装完成后重启对应的 DSH 实例，从左侧边栏打开“远程控制”，按提示登录并连接。若你的 Profile 不是 `desktop`，请替换命令中的 Profile 名称。
 
 安装命令不锁定插件版本，会获取 npm 当前的默认发布版本。插件包与 DSH 的兼容范围请以所安装版本的 `peerDependencies` 为准；较新的 DSH 不代表旧插件包自动兼容。当前仓库源码以 DSH `0.1.7-rc.2` 为适配基线，并面向后续兼容版本；DSH Desktop 使用与自身版本配套的内置构建，不能简单等同于 npm 上的包。需要固定可复现的部署时，再在包名后添加经过验证的版本号。
+
+## 确认 DSH 已接入
+
+完成连接后，在 Agents Anywhere 的设备页面可以看到设备在线，以及 DSH 运行时的状态。下图展示了 DSH 正在运行的设备；如果状态未出现或显示断开，先检查工作设备上的 DSH 和 Connector。
+
+![Agents Anywhere 设备页面显示设备在线，DSH Agent Runtime 正在运行](docs/images/dsh-runtime-connected.png)
 
 ## 使用条件与数据范围
 
