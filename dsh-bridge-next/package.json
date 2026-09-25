@@ -23,6 +23,7 @@
     "locale",
     "cordis.patch.yml",
     "README.md",
+    "TECHNICAL.md",
     "RUNTIME_READS.md",
     "USER_QUESTIONS.md"
   ],
