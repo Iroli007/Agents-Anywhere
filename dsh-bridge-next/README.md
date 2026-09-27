@@ -2,7 +2,30 @@
 
 Agents Anywhere 的 DSH 插件。支持没有安装 AA Desktop 时的账号登录、手机扫码连接、本机 Connector 管理及 Web onboarding。AA Desktop 与承载插件的 DSH Desktop 是两个应用。
 
-职责与后续开发见 [开发计划](./DEVELOPMENT_PLAN.md)，完整产品设计见 [Onboarding 业务方案](./ONBOARDING_PLAN.md)，检查命令与手动验收见 [验证记录](./VERIFICATION.md)。
+## 安装与开始使用
+
+本版插件基于 DSH `0.1.7-rc.2` 构建。请先更新承载插件的 DSH Desktop。插件版本与 DSH SDK 版本分别管理。
+
+在 DSH 的插件安装入口输入以下 npm 包名：
+
+```text
+@agents-anywhere/dsh-bridge-next
+```
+
+使用 DSH CLI 管理 `desktop` profile 时，也可以执行：
+
+```bash
+npx --registry=https://registry.npmjs.org -y -p @deepseek-ai/dsh@0.1.7-rc.2 \
+  dsh plugin --profile desktop add @agents-anywhere/dsh-bridge-next@2.0.1
+```
+
+请使用目标 DSH 实例实际使用的 `DSH_HOME` 和 profile；其他 profile 请替换名称。安装后重启目标 DSH Desktop，点击左侧边栏「设置」上方的「远程控制」，登录 Agents Anywhere Cloud 或连接自己的服务器，再按页面完成设备配置和手机连接。
+
+npm 包已包含插件构建产物和 Connector 源码，安装使用不需要克隆仓库、运行 Yarn 或执行 Python 开发测试。首次连接时会通过随依赖提供的 uv 准备 Python 环境，需要网络连接。云端连接不需要自行部署 AA Server；自建服务需同时部署配套的 Server 和 Web。
+
+AA Desktop 正在运行时，插件会引导打开 AA Desktop；仅安装而未运行时，插件仍可管理连接。旧版连接插件如仍在管理相同账号或设备，应先在 DSH 中停用。
+
+开发者可继续阅读下方的源码构建说明，以及 [Runtime 技术说明](./RUNTIME_READS.md)、[问答与审批](./USER_QUESTIONS.md)。开发计划和历史验证记录位于源代码仓库。
 
 ## 已实现
 
@@ -47,20 +70,21 @@ RPC 解析、执行、响应大小、取消和超时错误按请求返回，不�
 
 原生历史读取失败只影响对应会话：桥接日志显示会话 ID、`read_failed` 和官方读取错误，其他会话继续同步；AA 已有历史不会被空快照覆盖。修复 DSH 原生历史后可刷新该会话重试，插件不会自行修改原始会话文件。
 
-## 本地构建与安装
+## 从源码构建（开发者）
 
 需要 Node.js `^22.19.0 || >=24`、Corepack，插件通过 npm 依赖 `@dataiku/uv` 提供 uv，运行 Connector 时按需准备 Python 3.12+。开发 Python 子项目时仍可使用本机 uv。项目使用 Yarn；DSH 安装命令内部使用其自己的包管理器。
 
 ```bash
-cd /Users/t4wefan/code/github/Agents-Anywhere
+git clone https://github.com/anywhere-labs/Agents-Anywhere.git
+cd Agents-Anywhere
 uv sync --project connector
 uv sync --project server
 
-cd /Users/t4wefan/code/github/Agents-Anywhere/dsh-bridge-next
+cd dsh-bridge-next
 corepack yarn install
 corepack yarn check
 
-DSH_HOME="$HOME/.dsh" npx -y -p @deepseek-ai/dsh@0.1.7-rc.2 \
+npx --registry=https://registry.npmjs.org -y -p @deepseek-ai/dsh@0.1.7-rc.2 \
   dsh plugin --profile desktop add "link:$PWD"
 ```
 
@@ -70,10 +94,9 @@ Python 依赖用于跨语言测试，必须在首次执行 `check` 前准备。�
 
 旧 `dsh-bridge` 如果还在管理同一个账号或设备，应先在 DSH 中停用旧插件，再测试 Next；本项目不会接管旧插件或 Desktop 的进程与凭据。
 
-服务端和 Web 必须使用包含本次改动的版本：新增插件 OAuth client 与 Web 引导路由需要配套。自行启动仓库的本地 Server / Web：
+服务端和 Web 必须使用包含本次改动的版本：新增插件 OAuth client 与 Web 引导路由需要配套。在仓库根目录自行启动本地 Server / Web：
 
 ```bash
-cd /Users/t4wefan/code/github/Agents-Anywhere
 ./local-up.sh
 ```
 
@@ -91,8 +114,10 @@ cd /Users/t4wefan/code/github/Agents-Anywhere
 
 ## 开发模式
 
+在仓库根目录执行：
+
 ```bash
-cd /Users/t4wefan/code/github/Agents-Anywhere/dsh-bridge-next
+cd dsh-bridge-next
 corepack yarn dev
 ```
 
