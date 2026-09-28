@@ -465,7 +465,7 @@ private fun permissionTranslationByLabelKey(labelKey: String?): RuntimePermissio
         "dashboard.new.permissionModes.dsh.readOnly.label" -> RuntimePermissionTranslation.DshReadOnly
         "dashboard.new.permissionModes.dsh.workspaceWrite.label" -> RuntimePermissionTranslation.DshWorkspaceWrite
         "dashboard.new.permissionModes.dsh.fullAccess.label" -> RuntimePermissionTranslation.DshFullAccess
-        "dashboard.new.permissionModes.dsh.autoReview.label" -> RuntimePermissionTranslation.DshAutoReview
+        "dashboard.new.permissionModes.dsh.auto.label" -> RuntimePermissionTranslation.DshAutoReview
         "dashboard.new.permissionModes.requestApproval.label" -> RuntimePermissionTranslation.RequestApproval
         "dashboard.new.permissionModes.autoReview.label" -> RuntimePermissionTranslation.AutoReview
         "dashboard.new.permissionModes.fullAccess.label" -> RuntimePermissionTranslation.FullAccess

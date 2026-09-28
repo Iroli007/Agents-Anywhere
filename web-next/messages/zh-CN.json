@@ -348,7 +348,9 @@
           "readOnly": { "label": "仅可查看" },
           "workspaceWrite": { "label": "工作区内修改" },
           "fullAccess": { "label": "完全权限" },
-          "autoReview": { "label": "Auto review" }
+          "auto": {
+            "label": "Auto review"
+          }
         },
         "requestApproval": {
           "label": "请求批准",
