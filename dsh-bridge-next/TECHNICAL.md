@@ -184,7 +184,12 @@ Bridge 的独占锁决定端点文件的写入权。获得锁后会重建残留�
 私有 runtime 端点提供 `session.listCommands` 与 `session.executeCommand`。两者使用现有
 `sessionId` / `externalSessionId` 身份检查和原生 source 可用性，通过 Session Controller
 取得该会话的权威 Agent，再调用真实 `commands.list` / `commands.execute`；命令文本不会
-作为普通 prompt 发送。目录每次从 registry 读取，包含 Agent 的 scoped override，列表
+作为普通 prompt 发送。AA 仅开放 `/compact`：目录先过滤出当前 Agent 注册的 `compact`，
+再执行搜索和数量限制；没有注册时返回空列表。Bridge 和 Python Connector 均拒绝其他
+命令名，Connector 还会过滤旧 Bridge 返回的其他命令，避免暴露依赖 DSH 客户端 UI 的入口。
+模型和权限选择继续走现有会话控件及其独立接口。
+
+目录每次从 registry 读取，包含 Agent 的 scoped override，列表
 支持 `query` 和 1–1000 的 `limit`（默认 50）。未提供 registry/controller 的 Host 不启用
 `session.commands`；旧 Bridge 由 Connector 显示升级原因。
 
@@ -197,7 +202,8 @@ Bridge 的独占锁决定端点文件的写入权。获得锁后会重建残留�
 目录沿用公共 RuntimeCommand 字段，metadata 保留原生 `input`、可选 `definitionId`，
 并声明 `attachmentsAvailable:false` 与 `ui:{kind:'execute',argumentHint?,
 acceptsMultiline:true,allowedStatuses:[...]}`。`acceptsArgs` 决定参数编辑行为；原生 handler
-负责 busy 状态和每次调用的语法校验。不要仅因为会话正在运行就屏蔽所有命令。
+负责 busy 状态和每次调用的语法校验。DSH 自带的 `/compact` 不接受参数，非空参数和
+忙碌时的压缩请求由原生 handler 拒绝。
 
 `commands/change()` 无参数。Bridge 使用既有 runtime/session capability 通知失效目录，
 Connector 最终发出平台 `runtime.capability.updated`（保留可选 sessionId/runtimeId）。

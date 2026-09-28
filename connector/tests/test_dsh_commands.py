@@ -22,36 +22,36 @@ MALFORMED_ACKS: dict[str, Any] = {
     "null-command": {"command": None, "ok": True, "result": {"kind": "success", "commandId": "one"}},
     "numeric-command": {"command": 7, "ok": True, "result": {"kind": "success", "commandId": "one"}},
     "empty-command": {"command": "", "ok": True, "result": {"kind": "success", "commandId": "one"}},
-    "no-ok": {"command": "feedback", "result": {"kind": "success", "commandId": "one"}},
-    "null-ok": {"command": "feedback", "ok": None, "result": {"kind": "success", "commandId": "one"}},
-    "numeric-ok": {"command": "feedback", "ok": 1, "result": {"kind": "success", "commandId": "one"}},
-    "no-result": {"command": "feedback", "ok": True},
-    "empty-result": {"command": "feedback", "ok": True, "result": {}},
-    "wrong-result-type": {"command": "feedback", "ok": True, "result": []},
-    "wrong-kind": {"command": "feedback", "ok": True, "result": {"kind": "error", "commandId": "one"}},
-    "array-kind": {"command": "feedback", "ok": True, "result": {"kind": [], "commandId": "one"}},
-    "no-kind": {"command": "feedback", "ok": True, "result": {"commandId": "one"}},
-    "no-id": {"command": "feedback", "ok": True, "result": {"kind": "success"}},
-    "no-success-state": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": "one"}},
-    "numeric-id": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": 7}},
-    "empty-id": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": ""}},
-    "negative-seq": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": "one", "sourceEventSeq": -1}},
-    "boolean-seq": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": "one", "sourceEventSeq": True}},
-    "invalid-text": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": "one", "text": 8}},
-    "invalid-state": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": "one", "executionState": "unknown"}},
-    "array-state": {"command": "feedback", "ok": True, "result": {"kind": "success", "commandId": "one", "executionState": []}},
-    "error-source-seq": {"command": "feedback", "ok": False, "code": "command_error", "result": {"kind": "error", "commandId": "one", "sourceEventSeq": 1}},
-    "false-success": {"command": "feedback", "ok": False, "code": "command_error", "result": {"kind": "success", "commandId": "one"}},
-    "error-without-id": {"command": "feedback", "ok": False, "code": "command_error", "result": {"kind": "error"}},
-    "no-error-state": {"command": "feedback", "ok": False, "code": "command_error", "result": {"kind": "error", "commandId": "one"}},
-    "failed-without-code": {"command": "feedback", "ok": False, "result": {}},
-    "invalid-retryability": {"command": "feedback", "ok": False, "code": "command_outcome_unknown", "result": {"executionState": "unknown", "retryable": True}},
-    "missing-unknown-state": {"command": "feedback", "ok": False, "code": "command_outcome_unknown", "result": {}},
-    "missing-no-retry": {"command": "feedback", "ok": False, "code": "command_failed", "result": {"executionState": "unknown"}},
-    "validation-with-unknown-state": {"command": "feedback", "ok": False, "code": "invalid_command", "result": {"executionState": "unknown", "retryable": False}},
-    "native-error-wrong-code": {"command": "feedback", "ok": False, "code": "invalid_command", "result": {"kind": "error", "commandId": "one", "executionState": "completed"}},
-    "missing-native-error-kind": {"command": "feedback", "ok": False, "code": "command_error", "result": {}},
-    "unrecognized-validation-code": {"command": "feedback", "ok": False, "code": "unexpected_code", "result": {}},
+    "no-ok": {"command": "compact", "result": {"kind": "success", "commandId": "one"}},
+    "null-ok": {"command": "compact", "ok": None, "result": {"kind": "success", "commandId": "one"}},
+    "numeric-ok": {"command": "compact", "ok": 1, "result": {"kind": "success", "commandId": "one"}},
+    "no-result": {"command": "compact", "ok": True},
+    "empty-result": {"command": "compact", "ok": True, "result": {}},
+    "wrong-result-type": {"command": "compact", "ok": True, "result": []},
+    "wrong-kind": {"command": "compact", "ok": True, "result": {"kind": "error", "commandId": "one"}},
+    "array-kind": {"command": "compact", "ok": True, "result": {"kind": [], "commandId": "one"}},
+    "no-kind": {"command": "compact", "ok": True, "result": {"commandId": "one"}},
+    "no-id": {"command": "compact", "ok": True, "result": {"kind": "success"}},
+    "no-success-state": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": "one"}},
+    "numeric-id": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": 7}},
+    "empty-id": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": ""}},
+    "negative-seq": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": "one", "sourceEventSeq": -1}},
+    "boolean-seq": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": "one", "sourceEventSeq": True}},
+    "invalid-text": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": "one", "text": 8}},
+    "invalid-state": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": "one", "executionState": "unknown"}},
+    "array-state": {"command": "compact", "ok": True, "result": {"kind": "success", "commandId": "one", "executionState": []}},
+    "error-source-seq": {"command": "compact", "ok": False, "code": "command_error", "result": {"kind": "error", "commandId": "one", "sourceEventSeq": 1}},
+    "false-success": {"command": "compact", "ok": False, "code": "command_error", "result": {"kind": "success", "commandId": "one"}},
+    "error-without-id": {"command": "compact", "ok": False, "code": "command_error", "result": {"kind": "error"}},
+    "no-error-state": {"command": "compact", "ok": False, "code": "command_error", "result": {"kind": "error", "commandId": "one"}},
+    "failed-without-code": {"command": "compact", "ok": False, "result": {}},
+    "invalid-retryability": {"command": "compact", "ok": False, "code": "command_outcome_unknown", "result": {"executionState": "unknown", "retryable": True}},
+    "missing-unknown-state": {"command": "compact", "ok": False, "code": "command_outcome_unknown", "result": {}},
+    "missing-no-retry": {"command": "compact", "ok": False, "code": "command_failed", "result": {"executionState": "unknown"}},
+    "validation-with-unknown-state": {"command": "compact", "ok": False, "code": "invalid_command", "result": {"executionState": "unknown", "retryable": False}},
+    "native-error-wrong-code": {"command": "compact", "ok": False, "code": "invalid_command", "result": {"kind": "error", "commandId": "one", "executionState": "completed"}},
+    "missing-native-error-kind": {"command": "compact", "ok": False, "code": "command_error", "result": {}},
+    "unrecognized-validation-code": {"command": "compact", "ok": False, "code": "unexpected_code", "result": {}},
 }
 
 
@@ -88,10 +88,12 @@ async def bridge(tmp_path: Path, *, supported: bool = True, mode: str = "success
                     elif mode == "unavailable":
                         result["capabilities"][0].update({"available": False, "allowed": False, "unavailableReason": "DSH session is archived."})
                 elif method == "session.listCommands":
-                    assert params == {"sessionId": "session", "externalSessionId": "native", "query": "feedback", "limit": 1}
-                    result = {"commands": [{"id": "feedback", "title": "feedback", "description": "native feedback", "acceptsArgs": True,
-                        "metadata": {"definitionId": "feedback-plugin", "input": {"hint": "text", "attachments": True}, "attachmentsAvailable": False,
+                    assert params == {"sessionId": "session", "externalSessionId": "native", "query": "compact", "limit": 1}
+                    result = {"commands": [{"id": "compact", "title": "compact", "description": "native compact", "acceptsArgs": True,
+                        "metadata": {"definitionId": "compact-plugin", "input": {"hint": "text", "attachments": True}, "attachmentsAvailable": False,
                             "ui": {"kind": "execute", "acceptsMultiline": True, "allowedStatuses": ["idle", "running"]}}}]}
+                    if mode == "wide-catalog":
+                        result["commands"].extend({"id": name, "title": name} for name in ["export", "goal", "permission"])
                 elif method == "session.executeCommand":
                     entered.set()
                     if mode == "timeout":
@@ -149,19 +151,37 @@ async def bridge(tmp_path: Path, *, supported: bool = True, mode: str = "success
 def test_public_catalog_execution_preserves_native_descriptor_and_raw_correlations(tmp_path: Path) -> None:
     async def run() -> None:
         async with bridge(tmp_path) as (runtime, requests, _):
-            catalog = await runtime.list_commands("session", "native", query="feedback", limit=1)
+            catalog = await runtime.list_commands("session", "native", query="compact", limit=1)
             assert len(catalog) == 1
-            assert catalog[0].id == "feedback" and catalog[0].accepts_args
+            assert catalog[0].id == "compact" and catalog[0].accepts_args
             assert catalog[0].metadata["input"] == {"hint": "text", "attachments": True}
             assert catalog[0].metadata["attachmentsAvailable"] is False
             assert catalog[0].metadata["ui"]["acceptsMultiline"] is True
-            raw = "/feedback  first\nsecond  "
-            result = await runtime.execute_command("session", "feedback", "native", raw=raw, args=("ignored",))
+            raw = "/compact  first\nsecond  "
+            result = await runtime.execute_command("session", "compact", "native", raw=raw, args=("ignored",))
             assert result.ok and result.message == "native acknowledgement"
             assert result.result == {"commandId": "native-command-7", "kind": "success", "text": "native acknowledgement", "sourceEventSeq": 12, "executionState": "accepted"}
             execution = [r for r in requests if r["method"] == "session.executeCommand"]
             assert len(execution) == 1
-            assert execution[0]["params"] == {"sessionId": "session", "externalSessionId": "native", "command": "feedback", "raw": raw, "args": ["ignored"]}
+            assert execution[0]["params"] == {"sessionId": "session", "externalSessionId": "native", "command": "compact", "raw": raw, "args": ["ignored"]}
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("command", ["goal", "plan", "export", "feedback", "permission", "model", "file", "compact-thread"])
+def test_non_compact_commands_never_reach_the_bridge(tmp_path: Path, command: str) -> None:
+    async def run() -> None:
+        async with bridge(tmp_path) as (runtime, requests, _):
+            result = await runtime.execute_command("session", command, "native", raw=f"/{command}")
+            assert not result.ok and result.code == "unknown_command"
+            assert not any(r["method"] == "session.executeCommand" for r in requests)
+    asyncio.run(run())
+
+
+def test_catalog_filters_non_compact_commands_from_an_older_bridge(tmp_path: Path) -> None:
+    async def run() -> None:
+        async with bridge(tmp_path, mode="wide-catalog") as (runtime, _, _):
+            catalog = await runtime.list_commands("session", "native", query="compact", limit=1)
+            assert [command.id for command in catalog] == ["compact"]
     asyncio.run(run())
 
 
@@ -171,7 +191,7 @@ def test_old_bridge_remains_unavailable_with_upgrade_reason_and_no_command_rpc(t
             capability = (await runtime.get_session_capabilities("session", "native")).capabilities[0]
             assert not capability.available
             assert "upgrade" in (capability.unavailable_reason or "").lower()
-            result = await runtime.execute_command("session", "feedback", "native", raw="/feedback hi")
+            result = await runtime.execute_command("session", "compact", "native", raw="/compact hi")
             assert not result.ok and result.code == "bridge_upgrade_required"
             assert not any(r["method"] == "session.executeCommand" for r in requests)
     asyncio.run(run())
@@ -182,7 +202,7 @@ def test_old_bridge_remains_unavailable_with_upgrade_reason_and_no_command_rpc(t
 def test_public_native_error_is_not_success(tmp_path: Path) -> None:
     async def run() -> None:
         async with bridge(tmp_path, mode="error") as (runtime, _, _):
-            result = await runtime.execute_command("session", "permission", "native", raw="/permission missing")
+            result = await runtime.execute_command("session", "compact", "native", raw="/compact invalid")
             assert not result.ok
             assert result.result["kind"] == "error"
             assert result.result["commandId"] == "native-command-7"
@@ -194,7 +214,7 @@ def test_public_native_error_is_not_success(tmp_path: Path) -> None:
 def test_ambiguous_execution_never_retries_and_exposes_unknown_state(tmp_path: Path, mode: str) -> None:
     async def run() -> None:
         async with bridge(tmp_path, mode=mode) as (runtime, requests, _):
-            result = await runtime.execute_command("session", "feedback", "native", raw="/feedback once")
+            result = await runtime.execute_command("session", "compact", "native", raw="/compact once")
             assert not result.ok and result.code == "command_outcome_unknown"
             assert result.result == {"executionState": "unknown", "retryable": False}
             assert len([r for r in requests if r["method"] == "session.executeCommand"]) == 1
@@ -204,7 +224,7 @@ def test_ambiguous_execution_never_retries_and_exposes_unknown_state(tmp_path: P
 def test_python_cancellation_propagates_and_sends_transport_cancel(tmp_path: Path) -> None:
     async def run() -> None:
         async with bridge(tmp_path, mode="timeout") as (runtime, requests, entered):
-            task = asyncio.create_task(runtime.execute_command("session", "feedback", "native", raw="/feedback once"))
+            task = asyncio.create_task(runtime.execute_command("session", "compact", "native", raw="/compact once"))
             await asyncio.wait_for(entered.wait(), 1)
             task.cancel()
             with pytest.raises(asyncio.CancelledError):
@@ -218,8 +238,8 @@ def test_missing_partial_or_session_unavailable_capability_never_dispatches(tmp_
     async def run() -> None:
         async with bridge(tmp_path, mode=mode) as (runtime, requests, _):
             with pytest.raises(RuntimeUnsupportedError):
-                await runtime.list_commands("session", "native", query="feedback", limit=1)
-            result = await runtime.execute_command("session", "feedback", "native", raw="/feedback hi")
+                await runtime.list_commands("session", "native", query="compact", limit=1)
+            result = await runtime.execute_command("session", "compact", "native", raw="/compact hi")
             assert not result.ok
             assert result.code == ("commands_unavailable" if mode == "unavailable" else "bridge_upgrade_required")
             assert not any(r["method"] in {"session.executeCommand", "session.listCommands"} for r in requests)
@@ -230,9 +250,9 @@ def test_missing_partial_or_session_unavailable_capability_never_dispatches(tmp_
 def test_result_identity_or_error_kind_cannot_be_reported_as_success(tmp_path: Path, mode: str) -> None:
     async def run() -> None:
         async with bridge(tmp_path, mode=mode) as (runtime, _, _):
-            result = await runtime.execute_command("session", "feedback", "native", raw="/feedback hi")
+            result = await runtime.execute_command("session", "compact", "native", raw="/compact hi")
             assert not result.ok
-            assert result.command == "feedback"
+            assert result.command == "compact"
             assert result.result == {"executionState": "unknown", "retryable": False}
     asyncio.run(run())
 
@@ -241,8 +261,8 @@ def test_result_identity_or_error_kind_cannot_be_reported_as_success(tmp_path: P
 def test_authenticated_public_execution_rejects_incomplete_or_malformed_ack_without_retry(tmp_path: Path, mode: str) -> None:
     async def run() -> None:
         async with bridge(tmp_path, mode=mode) as (runtime, requests, _):
-            result = await runtime.execute_command("session", "feedback", "native", raw="/feedback once")
-            assert result.command == "feedback"
+            result = await runtime.execute_command("session", "compact", "native", raw="/compact once")
+            assert result.command == "compact"
             assert result.ok is False and result.code == "command_outcome_unknown"
             assert result.result == {"executionState": "unknown", "retryable": False}
             assert len([r for r in requests if r["method"] == "session.executeCommand"]) == 1
@@ -252,7 +272,7 @@ def test_authenticated_public_execution_rejects_incomplete_or_malformed_ack_with
 def test_authenticated_public_execution_preserves_known_validation_without_correlation(tmp_path: Path) -> None:
     async def run() -> None:
         async with bridge(tmp_path, mode="validation-failed") as (runtime, requests, _):
-            result = await runtime.execute_command("session", "feedback", "native", raw="/permission")
+            result = await runtime.execute_command("session", "compact", "native", raw="/permission")
             assert not result.ok and result.code == "invalid_command"
             assert result.result == {} and result.message == "raw mismatch"
             assert len([r for r in requests if r["method"] == "session.executeCommand"]) == 1

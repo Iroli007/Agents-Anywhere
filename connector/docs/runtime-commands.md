@@ -38,10 +38,16 @@ status when the native snapshot omits item status.
 
 ## DeepSeek Harness
 
-The bridge lists commands from the authoritative DSH command registry for the
-session Agent, then passes the exact submitted line to the registry's parser and
-handler. Installed plugins determine the inventory. Optional commands are not
-hardcoded into AA, and native validation and result text remain authoritative.
+AA exposes only `/compact` for DSH. The bridge filters the current session
+Agent's native registry before applying search and limits. If that Agent has no
+registered `compact` command, the catalog is empty. Both the bridge and Python
+connector reject other command names, including commands that depend on DSH's
+client UI. The connector also filters catalogs returned by older bridges.
+
+Compaction still runs through the native registry's parser and handler, preserving
+the exact submitted line and native result text. The shipped DSH command takes
+no arguments; its handler owns validation and busy-state rejection. Model and
+permission selection continue through the existing session controls.
 
 The bridge emits a new catalog revision when the registry changes. The connector,
 server and Web client preserve it so the menu refreshes without reconnecting.
