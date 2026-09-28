@@ -11,6 +11,7 @@ from connector.runtime_protocol import (
     RuntimeTimelineItem,
 )
 from connector.runtime_protocol.host import RuntimeHostClient
+from connector.runtimes.claude.catalogs.reader import ClaudeCatalogReader
 from connector.runtimes.claude.domain.pending_messages import (
     ClaudePendingClientMessageRegistry,
     client_message_text_matches,
@@ -71,6 +72,7 @@ class ClaudeTurnRunner:
     notifications: ClaudeNotificationProjector
     interactions: ClaudeInteractionController
     pending_messages: ClaudePendingClientMessageRegistry
+    catalogs: ClaudeCatalogReader
     sdk_loader: SdkLoader | None = None
     client_factory: ClaudeClientFactory | None = None
     connections: dict[str, ClaudeConnection] = field(default_factory=dict, init=False)
@@ -225,6 +227,9 @@ class ClaudeTurnRunner:
                     "Claude selection change requires background work to finish"
                 )
             await existing.close()
+        # Scheduled reconnect bypasses the normal start/update selection path.
+        # Resolve its saved CLI-only selection before constructing SDK options.
+        await self.catalogs.resolve_model_selection(session.selections.get("model"))
         sdk = load_sdk(self.sdk_loader)
         settings_path = create_gateway_settings_file(self.config.values)
 
@@ -258,6 +263,7 @@ class ClaudeTurnRunner:
                 can_use_tool=approval,
                 stderr=stderr.record,
                 settings_path=settings_path,
+                cli_models=self.catalogs.cli_models,
                 on_tool_result=tool_result,
                 before_tool=lambda data: connection.before_tool(data),
             )
