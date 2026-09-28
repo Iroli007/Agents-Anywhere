@@ -1822,9 +1822,9 @@ async def _test_codex_runtime_reports_idle_session_capabilities() -> None:
 
     assert capability_set.session_id == "sess_1"
     assert capabilities[CAPABILITY_SESSION_SEND_MESSAGE].available is True
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].supported is False
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is False
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].unavailable_reason == "unsupported"
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].supported is True
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is True
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].unavailable_reason is None
     assert capabilities[CAPABILITY_RUNTIME_ATTACHMENT].available is True
     assert capabilities[CAPABILITY_SESSION_INTERRUPT].available is False
     assert capabilities[CAPABILITY_SESSION_INTERRUPT].unavailable_reason == (
@@ -1899,7 +1899,7 @@ async def _test_codex_runtime_reports_running_session_capabilities() -> None:
     assert capabilities[CAPABILITY_SESSION_SEND_MESSAGE].unavailable_reason == (
         "session_running"
     )
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is False
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is True
     assert capabilities[CAPABILITY_SESSION_INTERRUPT].available is True
     assert capabilities[CAPABILITY_SESSION_STEER].available is True
 
@@ -4029,11 +4029,11 @@ async def _test_codex_runtime_start_turn_carries_cached_session_selections() -> 
     assert turn_start[1]["sandbox"] == "danger-full-access"
 
 
-def test_codex_runtime_hides_commands_for_loaded_thread() -> None:
-    asyncio.run(_test_codex_runtime_hides_commands_for_loaded_thread())
+def test_codex_runtime_lists_commands_for_loaded_thread() -> None:
+    asyncio.run(_test_codex_runtime_lists_commands_for_loaded_thread())
 
 
-async def _test_codex_runtime_hides_commands_for_loaded_thread() -> None:
+async def _test_codex_runtime_lists_commands_for_loaded_thread() -> None:
     runtime = CodexRuntime(config=_config(), host=FakeHost(), client=FakeCodexClient())
 
     commands = await runtime.list_commands(
@@ -4042,26 +4042,29 @@ async def _test_codex_runtime_hides_commands_for_loaded_thread() -> None:
         query="comp",
     )
 
-    assert commands == ()
+    assert [command.id for command in commands] == ["compact"]
+    assert commands[0].enabled is True
 
 
-def test_codex_runtime_hides_commands_without_thread() -> None:
-    asyncio.run(_test_codex_runtime_hides_commands_without_thread())
+def test_codex_runtime_disables_commands_without_thread() -> None:
+    asyncio.run(_test_codex_runtime_disables_commands_without_thread())
 
 
-async def _test_codex_runtime_hides_commands_without_thread() -> None:
+async def _test_codex_runtime_disables_commands_without_thread() -> None:
     runtime = CodexRuntime(config=_config(), host=FakeHost(), client=FakeCodexClient())
 
     commands = await runtime.list_commands("sess_1", query="compact")
 
-    assert commands == ()
+    assert [command.id for command in commands] == ["compact"]
+    assert commands[0].enabled is False
+    assert commands[0].disabled_reason == "session_unloaded"
 
 
-def test_codex_runtime_rejects_compact_command_without_sdk_request() -> None:
-    asyncio.run(_test_codex_runtime_rejects_compact_command_without_sdk_request())
+def test_codex_runtime_accepts_native_compact_command() -> None:
+    asyncio.run(_test_codex_runtime_accepts_native_compact_command())
 
 
-async def _test_codex_runtime_rejects_compact_command_without_sdk_request() -> None:
+async def _test_codex_runtime_accepts_native_compact_command() -> None:
     client = FakeCodexClient()
     host = FakeHost()
     runtime = CodexRuntime(config=_config(), host=host, client=client)
@@ -4073,15 +4076,13 @@ async def _test_codex_runtime_rejects_compact_command_without_sdk_request() -> N
         raw="/compact",
     )
 
-    assert result.ok is False
+    assert result.ok is True
     assert result.command == "compact"
-    assert result.code == "unknown_command"
-    assert result.message == "Codex runtime does not support /compact"
-    assert all(request[0] != "thread/compact/start" for request in client.requests)
+    assert result.result["executionState"] == "accepted"
+    assert client.requests[-1] == ("thread/compact/start", {"threadId": "thread_1"})
+    assert all(request[0] != "turn/start" for request in client.requests)
     assert host.notice_upserts == []
     assert host.timeline_item_upserts == []
-    assert host.state_updates == []
-    assert host.session_capability_updates == []
 
 
 def test_codex_runtime_rejects_disabled_command_without_sdk_request() -> None:
@@ -4096,8 +4097,8 @@ async def _test_codex_runtime_rejects_disabled_command_without_sdk_request() -> 
 
     assert result.ok is False
     assert result.command == "compact"
-    assert result.code == "unknown_command"
-    assert result.message == "Codex runtime does not support /compact"
+    assert result.code == "command_unavailable"
+    assert result.message == "session_unloaded"
     assert all(request[0] != "thread/compact/start" for request in client.requests)
 
 
@@ -4118,8 +4119,7 @@ async def _test_codex_runtime_rejects_command_args_without_sdk_request() -> None
 
     assert result.ok is False
     assert result.command == "compact"
-    assert result.code == "unknown_command"
-    assert result.message == "Codex runtime does not support /compact"
+    assert result.code == "invalid_command"
     assert all(request[0] != "thread/compact/start" for request in client.requests)
 
 
