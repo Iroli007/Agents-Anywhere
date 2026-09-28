@@ -64,7 +64,7 @@ def test_compact_start_is_visible_before_ack_and_updates_in_place_on_completion(
     tmp_path,
 ):
     async def run():
-        async with fixture(tmp_path) as (runtime, client, host, wire, sdk):
+        async with fixture(tmp_path) as (runtime, _, host, wire, sdk):
             wire.configure(
                 before={
                     "thread/compact/start": [
@@ -86,17 +86,15 @@ def test_compact_start_is_visible_before_ack_and_updates_in_place_on_completion(
                 assert host.state_updates[-1]["status"] == "running"
                 assert not pending.done()
 
-                wire.configure(
-                    release_after={"thread/goal/get": ["thread/compact/start"]}
-                )
-                await client.command_request("thread", "thread/goal/get", {})
+                wire.configure(release_after={"test/notify": ["thread/compact/start"]})
+                await wire.flush(sdk)
                 result = await pending
                 assert result.ok and result.result["executionState"] == "accepted"
                 assert host.timeline_item_upserts[-1].status == "running"
 
                 wire.configure(
                     before={
-                        "thread/goal/get": [
+                        "test/notify": [
                             compact_item(
                                 "compact-turn", "compact-item", completed=True
                             ),
@@ -104,7 +102,7 @@ def test_compact_start_is_visible_before_ack_and_updates_in_place_on_completion(
                         ]
                     }
                 )
-                await client.command_request("thread", "thread/goal/get", {})
+                await wire.flush(sdk)
                 await wait_until(lambda: host.state_updates[-1]["status"] == "idle")
                 assert [item.id for item in host.timeline_item_upserts] == [
                     "compact-item",
@@ -150,7 +148,7 @@ def test_compact_terminal_without_item_completion_settles_the_running_marker(
     tmp_path, status, expected_status, expected_state
 ):
     async def run():
-        async with fixture(tmp_path) as (runtime, client, host, wire, sdk):
+        async with fixture(tmp_path) as (runtime, _, host, wire, sdk):
             wire.configure(
                 before={
                     "thread/compact/start": [
@@ -172,8 +170,8 @@ def test_compact_terminal_without_item_completion_settles_the_running_marker(
                 if status == "failed"
                 else None,
             )
-            wire.configure(before={"thread/goal/get": [terminal]})
-            await client.command_request("thread", "thread/goal/get", {})
+            wire.configure(before={"test/notify": [terminal]})
+            await wire.flush(sdk)
             await wait_until(lambda: host.state_updates[-1]["status"] != "running")
             marker = host.timeline_item_upserts[-1]
             assert marker.id == "compact-item"

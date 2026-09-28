@@ -10,47 +10,20 @@ and newlines; attachments remain in the draft and are not sent with commands.
 
 ## Codex
 
-These commands use the native SDK session owned by AA:
+AA exposes only `/compact` for Codex. It takes no arguments and requests native
+context compaction in the SDK session owned by AA. `/compact-thread` remains an
+alias of the same command, not a separate menu entry. Other Codex slash commands
+are absent from the catalog and rejected by the command API. Model, reasoning
+and permission settings remain available through the session selection controls.
 
-| Command | Behavior |
-| --- | --- |
-| `/status` | Show the observed session status. |
-| `/compact` | Request native context compaction. Alias: `/compact-thread`. |
-| `/goal` or `/goal status` | Read the native objective, status, token usage and elapsed time. |
-| `/goal <objective>` or `/goal create <objective>` | Create an active goal when no unfinished goal exists. |
-| `/goal edit <objective>` | Update an existing goal's objective. |
-| `/goal pause`, `/goal resume`, `/goal clear` | Explicitly change the native goal lifecycle. |
-| `/goal budget 100000` or `/goal budget null` | Set or remove the native token budget. |
-| `/review` | Review uncommitted changes in the current session. |
-| `/review branch main`, `/review commit <sha>` | Review against a branch or review a commit. |
-| `/review custom <instructions>` | Start a review with free-form instructions. |
-| `/plan on`, `/plan off` | Change native planning mode for subsequent turns. Bare `/plan` means `on`; alias: `/plan-mode`. |
-| `/model`, `/reasoning`, `/permission` | Open the existing selection controls. Alias: `/permissions`. |
+Compaction requires an idle or failed turn and respects known archived, missing,
+deleted and unavailable source states. The SDK adapter resumes the native thread
+before compacting. A writer lock held by another Codex client produces a rejection;
+this integration does not take over the Codex App or IDE.
 
-Goals also accept JSON through `create`, `edit` and `set`, for example:
-
-```text
-/goal create {"objective":"Fix the failing tests","tokenBudget":100000}
-/goal set {"status":"paused"}
-```
-
-Only `objective`, `status` and `tokenBudget` are accepted. Omitted budgets remain
-omitted; the connector does not invent a budget. Creating a second unfinished
-goal requires an explicit edit or clear. Concurrent goal commands in the same
-connector are serialized around the native read/check/write operation.
-
-Compaction, review and planning mode require an idle or failed turn. Goal commands
-can run while the session is active, so `/goal pause` remains usable. Commands
-respect known archived, missing, deleted and unavailable source states. A writer
-lock held by another Codex client produces a rejection; this integration does not
-take over the Codex App or IDE.
-
-The SDK adapter resumes the native thread before commands that need it. A native
-acceptance starts asynchronous work; compaction, review and goal turns use normal runtime
-notifications for session status, output and interruptions. Unsupported native
-methods return an error. Planning mode uses the experimental native
-`thread/settings/update` interface; its request and acknowledgement were checked
-against the bundled Codex 0.144.4 schema without changing dependency versions.
+Native acceptance starts asynchronous work; compaction uses normal runtime
+notifications for session status and interruptions. Unsupported native methods
+return an error.
 The notification adapter is tested with SDK 0.144.4 and 0.158.0. Ordinary turns
 reuse the SDK's existing event consumer; command turn controls do not create an
 additional subscription that could retain events or miss an early completion.

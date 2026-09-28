@@ -27,7 +27,7 @@ from openai_codex.generated.v2_all import (
     UserInput,
     WorkspaceWriteSandboxPolicy,
 )
-from pydantic import BaseModel, ConfigDict, Field, RootModel
+from pydantic import BaseModel, ConfigDict, Field
 
 from connector.logging import logger
 from connector.runtime_protocol import (
@@ -44,7 +44,6 @@ from connector.runtimes.codex.sdk.binary import (
 from connector.runtimes.codex.sdk.command_notifications import (
     CommandNotifications,
     LowLevelTurnHandle,
-    notification_parts,
     turn_identity,
 )
 from connector.runtimes.codex.sdk.events import CodexSdkEvent
@@ -139,9 +138,6 @@ class CodexSdkClient:
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._global_notification_task: asyncio.Task[None] | None = None
         self._command_notifications = CommandNotifications.for_client(client)
-        self._thread_settings: dict[str, dict[str, Any]] = {}
-        self._settings_revisions: dict[str, int] = {}
-        self._settings_clock = 0
         self._generation = 0
         self._resume_locks: dict[str, asyncio.Lock] = {}
         self._announced_turns: set[tuple[str, str]] = set()
@@ -241,8 +237,6 @@ class CodexSdkClient:
         self._loaded_thread_ids.clear()
         self._threads.clear()
         self._turns.clear()
-        self._thread_settings.clear()
-        self._settings_revisions.clear()
         self._announced_turns.clear()
         if self._command_notifications:
             self._command_notifications.clear()
@@ -363,7 +357,7 @@ class CodexSdkClient:
         await ensure_codex_initialized(self._client)
         low_level_client = codex_low_level_client(self._client)
         if low_level_client is not None:
-            before, generation = self._settings_clock, self._generation
+            generation = self._generation
             started = await low_level_client.thread_start(
                 codex_thread_start_params(request, self._model_gateway)
             )
@@ -375,7 +369,6 @@ class CodexSdkClient:
                 self._remember_thread(thread)
             if thread_id is not None:
                 self._loaded_thread_ids.add(thread_id)
-                self._observe_settings(thread_id, started, before)
             return CodexThreadResult(
                 thread_id=thread_id,
                 payload={"id": thread_id} if thread_id is not None else {},
@@ -537,7 +530,7 @@ class CodexSdkClient:
         thread_resume = getattr(low_level_client, "thread_resume", None)
         if not callable(thread_resume):
             return
-        before, generation = self._settings_clock, self._generation
+        generation = self._generation
         try:
             resumed = await thread_resume(
                 request.thread_id,
@@ -559,55 +552,6 @@ class CodexSdkClient:
             self._remember_thread(thread)
         if thread_id is not None:
             self._loaded_thread_ids.add(thread_id)
-            self._observe_settings(thread_id, resumed, before)
-
-    def _observe_settings(
-        self, thread_id: str, value: Any, before: int | None = None
-    ) -> None:
-        if before is not None and self._settings_revisions.get(thread_id, 0) > before:
-            return
-        if isinstance(value, BaseModel):
-            values = value.model_dump(mode="json", by_alias=True, exclude_unset=True)
-        elif isinstance(value, Mapping):
-            values = dict(value)
-        else:
-            return
-        settings: dict[str, Any] = {}
-        if isinstance(values.get("model"), str) and values["model"]:
-            settings["model"] = values["model"]
-        for key in ("effort", "reasoningEffort"):
-            if key in values and (
-                values[key] is None or isinstance(values[key], str) and values[key]
-            ):
-                settings["effort"] = values[key]
-                break
-        self._settings_clock += 1
-        self._settings_revisions[thread_id] = self._settings_clock
-        self._thread_settings[thread_id] = settings
-
-    async def _command_client(self, thread_id: str, *, mutation: bool) -> Any:
-        if not isinstance(thread_id, str) or not thread_id:
-            raise RuntimeInvalidRequestError("A native Codex thread ID is required")
-        await ensure_codex_initialized(self._client)
-        low_level = getattr(self._client, "_client", None)
-        if not callable(getattr(low_level, "request", None)):
-            raise RuntimeInvalidRequestError(
-                "Codex SDK does not expose native command requests"
-            )
-        if mutation:
-            if not callable(getattr(low_level, "thread_resume", None)):
-                raise RuntimeInvalidRequestError(
-                    "Codex SDK cannot verify the native thread writer"
-                )
-            self._observe_command_thread(thread_id)
-            await self.ensure_thread_resumed(
-                low_level, CodexResumeThreadRequest(thread_id)
-            )
-            if thread_id not in self._loaded_thread_ids:
-                raise RuntimeInvalidRequestError(
-                    "Codex has not acquired the native thread writer"
-                )
-        return low_level
 
     def _observe_command_thread(self, thread_id: str) -> None:
         if self._command_notifications:
@@ -621,73 +565,6 @@ class CodexSdkClient:
                 )
             )
             self._command_notifications.enable(thread_id, ordinary)
-
-    async def command_request(
-        self, thread_id: str, method: str, params: Mapping[str, Any]
-    ) -> dict[str, Any]:
-        if method not in {
-            "thread/goal/get",
-            "thread/goal/set",
-            "thread/goal/clear",
-            "review/start",
-        }:
-            raise RuntimeInvalidRequestError("Unsupported native Codex command method")
-        if not isinstance(params, Mapping) or {"threadId", "thread_id"} & params.keys():
-            raise RuntimeInvalidRequestError(
-                "Command parameters cannot override the native thread identity"
-            )
-        if method == "review/start" and params.get("delivery") != "inline":
-            raise RuntimeInvalidRequestError("AA supports native inline review only")
-        if (
-            method in {"thread/goal/set", "review/start"}
-            and self._command_notifications is None
-        ):
-            raise RuntimeInvalidRequestError(
-                "Codex SDK cannot observe native command turns"
-            )
-        low_level = await self._command_client(
-            thread_id, mutation=method != "thread/goal/get"
-        )
-        result = await low_level.request(
-            method,
-            {"threadId": thread_id, **params},
-            response_model=RootModel[dict[str, Any]],
-        )
-        return dict(result.root)
-
-    async def set_plan_mode(self, thread_id: str, mode: str) -> dict[str, Any]:
-        if mode not in {"plan", "default"}:
-            raise RuntimeInvalidRequestError(
-                "Codex collaboration mode must be plan or default"
-            )
-        low_level = await self._command_client(thread_id, mutation=True)
-        settings = self._thread_settings.get(thread_id, {})
-        if "model" not in settings or "effort" not in settings:
-            raise RuntimeInvalidRequestError(
-                "Codex has not reported authoritative model and reasoning settings"
-            )
-        result = await low_level.request(
-            "thread/settings/update",
-            {
-                "threadId": thread_id,
-                "collaborationMode": {
-                    "mode": mode,
-                    "settings": {
-                        "model": settings["model"],
-                        "reasoning_effort": settings["effort"],
-                        "developer_instructions": None,
-                    },
-                },
-            },
-            response_model=RootModel[dict[str, Any]],
-        )
-        ack = result.root
-        # The 0.144.4 experimental schema acknowledges settings with an empty object.
-        if ack == {}:
-            return {"applied": True}
-        if set(ack) == {"applied"} and type(ack["applied"]) is bool:
-            return dict(ack)
-        raise ValueError("Codex settings acknowledgement is malformed")
 
     async def ensure_thread_resumed_for_turn(
         self,
@@ -950,12 +827,7 @@ class CodexSdkClient:
     async def _emit(self, message: CodexNotificationMessage) -> None:
         if self._stopping:
             return
-        method, params = notification_parts(message)
-        if method == "thread/settings/updated" and isinstance(
-            params.get("threadId"), str
-        ):
-            self._observe_settings(params["threadId"], params.get("threadSettings", {}))
-        _, thread_id, turn_id = turn_identity(message)
+        method, thread_id, turn_id = turn_identity(message)
         if thread_id and turn_id:
             if method == "turn/started":
                 key = (thread_id, turn_id)

@@ -17,6 +17,7 @@ from openai_codex import (
     MethodNotFoundError,
     TransportClosedError,
 )
+from pydantic import RootModel
 
 from connector.runtime_protocol import RuntimeConflictError, RuntimeInvalidRequestError
 from connector.runtimes.codex.sdk.client import CodexSdkClient
@@ -72,15 +73,6 @@ for line in sys.stdin:
             result["thread"]["id"] = config["resume_thread_id"]
         for key in config.get("omit_resume", []):
             result.pop(key, None)
-    elif method == "thread/goal/get":
-        result = {"goal":None}
-    elif method == "thread/goal/set":
-        result = {"goal":{"threadId":"thread","objective":"objective","status":"active",
-            "createdAt":1,"updatedAt":2,"tokensUsed":0,"timeUsedSeconds":0,"tokenBudget":None}}
-    elif method == "thread/goal/clear":
-        result = {"cleared":True}
-    elif method == "review/start":
-        result = {"reviewThreadId":"thread","turn":turn("review")}
     elif method == "turn/start":
         result = {"turn":turn("ordinary")}
     elif method == "turn/steer":
@@ -120,6 +112,10 @@ class Wire:
             for request in self.requests
             if request["method"] == method
         ]
+
+    async def flush(self, sdk):
+        """Let the fake server deliver configured events and pending replies."""
+        await sdk._client.request("test/notify", {}, response_model=RootModel[dict])
 
     async def notified(self, count):
         async with asyncio.timeout(2):
@@ -235,57 +231,24 @@ def lifecycle(turn_id, *, completed=False):
     }
 
 
-def settings(model, effort):
-    return {
-        "method": "thread/settings/updated",
-        "params": {
-            "threadId": "thread",
-            "threadSettings": {
-                "model": model,
-                "effort": effort,
-                "modelProvider": "openai",
-                "cwd": "/tmp",
-                "approvalPolicy": "on-request",
-                "approvalsReviewer": "user",
-                "sandboxPolicy": {"type": "dangerFullAccess"},
-                "collaborationMode": {
-                    "mode": "default",
-                    "settings": {
-                        "model": model,
-                        "reasoning_effort": effort,
-                        "developer_instructions": None,
-                    },
-                },
-            },
-        },
-    }
-
-
-def test_raw_goal_budget_null_and_read_only_get_use_native_transport(tmp_path):
+@pytest.mark.parametrize("start", [False, True])
+def test_compact_acquires_native_writer_once_without_starting_a_user_turn(
+    tmp_path, start
+):
     async def run():
         async with fixture(tmp_path) as (client, wire, _):
-            assert await client.command_request("thread", "thread/goal/get", {}) == {
-                "goal": None
-            }
-            assert not wire.calls("thread/resume")
-            result = await client.command_request(
-                "thread", "thread/goal/set", {"tokenBudget": None}
-            )
-            assert result["goal"]["threadId"] == "thread"
-            await client.command_request("thread", "thread/goal/clear", {})
-            assert wire.calls("thread/goal/set") == [
-                {"threadId": "thread", "tokenBudget": None}
-            ]
-            assert len(wire.calls("thread/resume")) == 1
+            if start:
+                await client.start_thread(CodexStartThreadRequest())
+            await client.compact_thread("thread")
+            await client.compact_thread("thread")
+            assert len(wire.calls("thread/resume")) == (0 if start else 1)
+            assert wire.calls("thread/compact/start") == [{"threadId": "thread"}] * 2
             assert not wire.calls("turn/start")
 
     asyncio.run(run())
 
 
-@pytest.mark.parametrize(
-    "method", ["thread/goal/set", "thread/goal/clear", "review/start", "plan"]
-)
-def test_native_writer_conflict_prevents_all_command_mutation(tmp_path, method):
+def test_native_writer_conflict_prevents_compaction(tmp_path):
     async def run():
         async with fixture(tmp_path) as (client, wire, _):
             wire.configure(
@@ -297,80 +260,9 @@ def test_native_writer_conflict_prevents_all_command_mutation(tmp_path, method):
                 }
             )
             with pytest.raises(RuntimeConflictError):
-                if method == "plan":
-                    await client.set_plan_mode("thread", "plan")
-                else:
-                    await client.command_request(
-                        "thread",
-                        method,
-                        {"delivery": "inline"} if method == "review/start" else {},
-                    )
-            assert not wire.calls(
-                "thread/settings/update" if method == "plan" else method
-            )
-
-    asyncio.run(run())
-
-
-@pytest.mark.parametrize(
-    "method,params",
-    [
-        ("turn/start", {}),
-        ("thread/goal/get", {"threadId": "other"}),
-        ("thread/goal/set", {"thread_id": "other"}),
-        ("review/start", {"delivery": "detached"}),
-    ],
-)
-def test_command_seam_rejects_method_or_identity_overrides_before_rpc(
-    tmp_path, method, params
-):
-    async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            with pytest.raises(RuntimeInvalidRequestError):
-                await client.command_request("thread", method, params)
-            assert not wire.calls("thread/resume")
-            assert not wire.calls(method)
-
-    asyncio.run(run())
-
-
-@pytest.mark.parametrize("start", [False, True])
-def test_plan_payload_uses_authoritative_native_model_and_explicit_null_effort(
-    tmp_path, start
-):
-    async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            if start:
-                await client.start_thread(
-                    CodexStartThreadRequest(model="requested-model")
-                )
-            assert await client.set_plan_mode("thread", "plan") == {"applied": True}
-            assert wire.calls("thread/settings/update") == [
-                {
-                    "threadId": "thread",
-                    "collaborationMode": {
-                        "mode": "plan",
-                        "settings": {
-                            "model": "native-model",
-                            "reasoning_effort": None,
-                            "developer_instructions": None,
-                        },
-                    },
-                }
-            ]
-            assert len(wire.calls("thread/resume")) == (0 if start else 1)
+                await client.compact_thread("thread")
+            assert not wire.calls("thread/compact/start")
             assert not wire.calls("turn/start")
-
-    asyncio.run(run())
-
-
-def test_plan_refuses_missing_authoritative_effort_without_guessing(tmp_path):
-    async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            wire.configure(omit_resume=["reasoningEffort"])
-            with pytest.raises(RuntimeInvalidRequestError):
-                await client.set_plan_mode("thread", "plan")
-            assert not wire.calls("thread/settings/update")
 
     asyncio.run(run())
 
@@ -380,82 +272,30 @@ def test_wrong_resume_identity_cannot_grant_writer_or_send_command(tmp_path):
         async with fixture(tmp_path) as (client, wire, _):
             wire.configure(resume_thread_id="another-thread")
             with pytest.raises(RuntimeError, match="identity"):
-                await client.command_request("thread", "thread/goal/clear", {})
-            assert not wire.calls("thread/goal/clear")
+                await client.compact_thread("thread")
+            assert not wire.calls("thread/compact/start")
             wire.configure()
-            await client.command_request("thread", "thread/goal/clear", {})
+            await client.compact_thread("thread")
             assert len(wire.calls("thread/resume")) == 2
 
     asyncio.run(run())
 
 
-def test_settings_notifications_win_over_older_resume_and_update_ack(tmp_path):
-    async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            wire.configure(
-                before={
-                    "thread/resume": [settings("new-model", "high")],
-                    "thread/settings/update": [settings("latest-model", None)],
-                }
-            )
-            await client.set_plan_mode("thread", "plan")
-            wire.configure()
-            await client.set_plan_mode("thread", "default")
-            payloads = wire.calls("thread/settings/update")
-            assert payloads[0]["collaborationMode"]["settings"]["model"] == "new-model"
-            assert (
-                payloads[0]["collaborationMode"]["settings"]["reasoning_effort"]
-                == "high"
-            )
-            assert payloads[1]["collaborationMode"]["settings"] == {
-                "model": "latest-model",
-                "reasoning_effort": None,
-                "developer_instructions": None,
-            }
-
-    asyncio.run(run())
-
-
-@pytest.mark.parametrize(
-    "ack",
-    [{"applied": None}, {"applied": 1}, {"applied": "true"}, {"unexpected": True}],
-)
-def test_plan_rejects_malformed_acknowledgements_without_replay(tmp_path, ack):
-    async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            wire.configure(results={"thread/settings/update": ack})
-            with pytest.raises(ValueError):
-                await client.set_plan_mode("thread", "plan")
-            assert len(wire.calls("thread/settings/update")) == 1
-
-    asyncio.run(run())
-
-
-def test_unsupported_native_plan_method_remains_a_visible_rejection(tmp_path):
+def test_unsupported_native_compact_method_remains_a_visible_rejection(tmp_path):
     async def run():
         async with fixture(tmp_path) as (client, wire, _):
             wire.configure(
                 errors={
-                    "thread/settings/update": {
+                    "thread/compact/start": {
                         "code": -32601,
-                        "message": "unsupported experimental method",
+                        "message": "unsupported method",
                     }
                 }
             )
             with pytest.raises(MethodNotFoundError):
-                await client.set_plan_mode("thread", "plan")
-            assert len(wire.calls("thread/settings/update")) == 1
+                await client.compact_thread("thread")
+            assert len(wire.calls("thread/compact/start")) == 1
             assert not wire.calls("turn/start")
-
-    asyncio.run(run())
-
-
-def test_explicit_plan_nonapplication_is_preserved(tmp_path):
-    async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            wire.configure(results={"thread/settings/update": {"applied": False}})
-            assert await client.set_plan_mode("thread", "plan") == {"applied": False}
-            assert len(wire.calls("thread/settings/update")) == 1
 
     asyncio.run(run())
 
@@ -467,57 +307,47 @@ def test_postdispatch_transport_loss_or_timeout_never_replays_command(
     async def run():
         async with fixture(tmp_path) as (client, wire, _):
             wire.configure(
-                **{"disconnect" if disconnect else "hang": ["thread/goal/set"]}
+                **{"disconnect" if disconnect else "hang": ["thread/compact/start"]}
             )
             with pytest.raises((TimeoutError, TransportClosedError)):
-                async with asyncio.timeout(0.1):
-                    await client.command_request(
-                        "thread", "thread/goal/set", {"status": "active"}
-                    )
-            assert len(wire.calls("thread/goal/set")) == 1
+                async with asyncio.timeout(0.5):
+                    await client.compact_thread("thread")
+            assert len(wire.calls("thread/compact/start")) == 1
 
     asyncio.run(run())
 
 
-def test_native_goal_turns_before_ack_and_followup_remain_visible_and_interruptible(
+def test_compact_turns_before_ack_remain_visible_and_interruptible(
     tmp_path,
 ):
     async def run():
         async with fixture(tmp_path) as (client, wire, sdk):
-            wire.configure(before={"thread/goal/set": [lifecycle("goal-1")]})
-            await client.command_request(
-                "thread", "thread/goal/set", {"objective": "test", "status": "active"}
-            )
+            wire.configure(before={"thread/compact/start": [lifecycle("compact-1")]})
+            await client.compact_thread("thread")
             await wire.notified(1)
-            await client.interrupt_turn(CodexInterruptTurnRequest("thread", "goal-1"))
-            await client.steer_turn(
-                CodexSteerTurnRequest("thread", "goal-1", "  continue\ncarefully  ")
+            await client.interrupt_turn(
+                CodexInterruptTurnRequest("thread", "compact-1")
             )
-            assert wire.calls("turn/steer") == [
-                {
-                    "threadId": "thread",
-                    "expectedTurnId": "goal-1",
-                    "input": [{"type": "text", "text": "  continue\ncarefully  "}],
-                }
-            ]
             wire.configure(
                 before={
-                    "thread/goal/get": [
-                        lifecycle("goal-2"),
-                        lifecycle("goal-1", completed=True),
+                    "test/notify": [
+                        lifecycle("compact-2"),
+                        lifecycle("compact-1", completed=True),
                     ]
                 }
             )
-            await client.command_request("thread", "thread/goal/get", {})
+            await wire.flush(sdk)
             await wire.notified(3)
             with pytest.raises(RuntimeInvalidRequestError):
                 await client.interrupt_turn(
-                    CodexInterruptTurnRequest("thread", "goal-1")
+                    CodexInterruptTurnRequest("thread", "compact-1")
                 )
-            await client.interrupt_turn(CodexInterruptTurnRequest("thread", "goal-2"))
+            await client.interrupt_turn(
+                CodexInterruptTurnRequest("thread", "compact-2")
+            )
             assert wire.calls("turn/interrupt") == [
-                {"threadId": "thread", "turnId": "goal-1"},
-                {"threadId": "thread", "turnId": "goal-2"},
+                {"threadId": "thread", "turnId": "compact-1"},
+                {"threadId": "thread", "turnId": "compact-2"},
             ]
             assert [event.event_type for event in wire.events] == [
                 "turn/started",
@@ -529,27 +359,22 @@ def test_native_goal_turns_before_ack_and_followup_remain_visible_and_interrupti
     asyncio.run(run())
 
 
-def test_fast_inline_review_completion_before_ack_does_not_resurrect_a_turn(tmp_path):
+def test_fast_compact_completion_before_ack_does_not_resurrect_a_turn(tmp_path):
     async def run():
         async with fixture(tmp_path) as (client, wire, sdk):
             wire.configure(
                 before={
-                    "review/start": [
-                        lifecycle("review"),
-                        lifecycle("review", completed=True),
+                    "thread/compact/start": [
+                        lifecycle("compact"),
+                        lifecycle("compact", completed=True),
                     ]
                 }
             )
-            result = await client.command_request(
-                "thread",
-                "review/start",
-                {"target": {"type": "uncommittedChanges"}, "delivery": "inline"},
-            )
-            assert result["turn"]["id"] == "review"
+            await client.compact_thread("thread")
             await wire.notified(2)
             with pytest.raises(RuntimeInvalidRequestError):
                 await client.interrupt_turn(
-                    CodexInterruptTurnRequest("thread", "review")
+                    CodexInterruptTurnRequest("thread", "compact")
                 )
             assert len(wire.events) == 2
             assert_no_native_turn_buffers(sdk)
@@ -562,7 +387,7 @@ def test_ordinary_turn_after_command_keeps_one_stream_and_no_native_queue_leak(
 ):
     async def run():
         async with fixture(tmp_path) as (client, wire, sdk):
-            await client.command_request("thread", "thread/goal/clear", {})
+            await client.compact_thread("thread")
             wire.configure(
                 before={
                     "turn/start": [
@@ -592,16 +417,14 @@ def test_first_command_during_ordinary_turn_preserves_its_stream_and_interrupt(
             await client.start_turn(CodexStartTurnRequest("thread", "hello"))
             await wire.notified(1)
             wire.configure()
-            await client.command_request(
-                "thread", "thread/goal/set", {"status": "paused"}
-            )
+            await client.compact_thread("thread")
             await client.interrupt_turn(CodexInterruptTurnRequest("thread", "ordinary"))
             await client.steer_turn(
                 CodexSteerTurnRequest("thread", "ordinary", "use the existing turn")
             )
             wire.configure(
                 before={
-                    "thread/goal/get": [
+                    "test/notify": [
                         {
                             "method": "item/agentMessage/delta",
                             "params": {
@@ -615,7 +438,7 @@ def test_first_command_during_ordinary_turn_preserves_its_stream_and_interrupt(
                     ]
                 }
             )
-            await client.command_request("thread", "thread/goal/get", {})
+            await wire.flush(sdk)
             await wire.notified(3)
             await asyncio.sleep(0.01)
             assert [event.event_type for event in wire.events] == [
@@ -646,10 +469,10 @@ def test_first_command_while_ordinary_start_ack_is_pending_preserves_early_event
         async with fixture(tmp_path) as (client, wire, sdk):
             wire.configure(
                 hold=["turn/start"],
-                release_after={"thread/goal/set": ["turn/start"]},
+                release_after={"thread/compact/start": ["turn/start"]},
                 before={
                     "turn/start": [lifecycle("ordinary")],
-                    "thread/goal/set": [
+                    "thread/compact/start": [
                         {
                             "method": "item/agentMessage/delta",
                             "params": {
@@ -668,14 +491,12 @@ def test_first_command_while_ordinary_start_ack_is_pending_preserves_early_event
             async with asyncio.timeout(2):
                 while not wire.calls("turn/start"):
                     await asyncio.sleep(0.001)
-            await client.command_request(
-                "thread", "thread/goal/set", {"status": "paused"}
-            )
+            await client.compact_thread("thread")
             await starting
             wire.configure(
-                before={"thread/goal/get": [lifecycle("ordinary", completed=True)]}
+                before={"test/notify": [lifecycle("ordinary", completed=True)]}
             )
-            await client.command_request("thread", "thread/goal/get", {})
+            await wire.flush(sdk)
             await wire.notified(3)
             assert [event.event_type for event in wire.events] == [
                 "turn/started",
@@ -693,16 +514,14 @@ def test_stop_and_disconnect_invalidate_native_writer_and_turn_ownership(
     tmp_path, disconnect
 ):
     async def run():
-        async with fixture(tmp_path) as (client, wire, _):
-            wire.configure(before={"thread/goal/set": [lifecycle("goal")]})
-            await client.command_request(
-                "thread", "thread/goal/set", {"status": "active"}
-            )
+        async with fixture(tmp_path) as (client, wire, sdk):
+            wire.configure(before={"thread/compact/start": [lifecycle("compact")]})
+            await client.compact_thread("thread")
             await wire.notified(1)
             if disconnect:
-                wire.configure(disconnect=["thread/goal/get"])
+                wire.configure(disconnect=["test/notify"])
                 with pytest.raises(TransportClosedError):
-                    await client.command_request("thread", "thread/goal/get", {})
+                    await wire.flush(sdk)
                 async with asyncio.timeout(2):
                     while client._loaded_thread_ids:
                         await asyncio.sleep(0.001)
