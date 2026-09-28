@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping
+from collections.abc import AsyncIterator, Mapping
 from typing import Any
 
 from openai_codex.models import Notification, UnknownNotification
@@ -43,6 +43,43 @@ def turn_identity(message: Any) -> tuple[str, str, str]:
         thread_id if isinstance(thread_id, str) else "",
         turn_id if isinstance(turn_id, str) else "",
     )
+
+
+class LowLevelTurnHandle:
+    """Control a turn without constructing another SDK event subscription.
+
+    Ordinary turn/start already owns a low-level consumer. Reuse it when
+    streaming; native command turns use only the control methods and keep all
+    their events in the global notification path.
+    """
+
+    def __init__(self, client: Any, thread_id: str, turn_id: str) -> None:
+        self._client = client
+        self.thread_id = thread_id
+        self.id = turn_id
+
+    async def interrupt(self) -> Any:
+        return await self._client.turn_interrupt(self.thread_id, self.id)
+
+    async def steer(self, content: str) -> Any:
+        return await self._client.turn_steer(self.thread_id, self.id, content)
+
+    async def stream(self) -> AsyncIterator[Any]:
+        self._client.register_turn_notifications(self.id)
+        try:
+            while True:
+                event = await self._client.next_turn_notification(self.id)
+                yield event
+                method, _, turn_id = turn_identity(event)
+                if turn_id == self.id and method in {
+                    "turn/completed",
+                    "turn/failed",
+                    "turn/interrupted",
+                    "turn/cancelled",
+                }:
+                    return
+        finally:
+            self._client.unregister_turn_notifications(self.id)
 
 
 class CommandNotifications:

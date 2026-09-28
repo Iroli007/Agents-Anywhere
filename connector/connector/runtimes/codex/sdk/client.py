@@ -43,6 +43,7 @@ from connector.runtimes.codex.sdk.binary import (
 )
 from connector.runtimes.codex.sdk.command_notifications import (
     CommandNotifications,
+    LowLevelTurnHandle,
     notification_parts,
     turn_identity,
 )
@@ -144,8 +145,10 @@ class CodexSdkClient:
         self._generation = 0
         self._resume_locks: dict[str, asyncio.Lock] = {}
         self._announced_turns: set[tuple[str, str]] = set()
+        self._stopping = False
 
     async def start(self, handler: NotificationHandler) -> None:
+        self._stopping = False
         self._handler = handler
         self._loop = asyncio.get_running_loop()
         observer = (
@@ -162,6 +165,7 @@ class CodexSdkClient:
         self.start_global_notification_task()
 
     async def stop(self) -> None:
+        self._stopping = True
         self._clear_native_ownership()
         self.cancel_pending_approval_responses()
         if self._global_notification_task is not None:
@@ -171,19 +175,24 @@ class CodexSdkClient:
                 return_exceptions=True,
             )
             self._global_notification_task = None
-        for task in self._stream_tasks.values():
-            task.cancel()
-        if self._stream_tasks:
-            await asyncio.gather(*self._stream_tasks.values(), return_exceptions=True)
+        stream_tasks = tuple(self._stream_tasks.values())
+        try:
+            # Closing the transport wakes SDK workers before a cancelled stream
+            # can unregister their queues. asyncio cancellation alone cannot
+            # stop the older SDK's blocking queue.get worker.
+            stop = getattr(self._client, "stop", None)
+            if callable(stop):
+                await maybe_await(stop())
+            elif self._entered_client is not None and hasattr(self._client, "__aexit__"):
+                await self._client.__aexit__(None, None, None)
+                self._entered_client = None
+            elif hasattr(self._client, "close"):
+                await maybe_await(self._client.close())
+        finally:
+            for task in stream_tasks:
+                task.cancel()
+            await asyncio.gather(*stream_tasks, return_exceptions=True)
             self._stream_tasks.clear()
-        stop = getattr(self._client, "stop", None)
-        if callable(stop):
-            await maybe_await(stop())
-        elif self._entered_client is not None and hasattr(self._client, "__aexit__"):
-            await self._client.__aexit__(None, None, None)
-            self._entered_client = None
-        elif hasattr(self._client, "close"):
-            await maybe_await(self._client.close())
 
     def cancel_pending_approval_responses(self) -> None:
         pending = tuple(self._pending_approval_responses.values())
@@ -932,6 +941,8 @@ class CodexSdkClient:
                 self._turns.pop(thread_id, None)
 
     async def _emit(self, message: CodexNotificationMessage) -> None:
+        if self._stopping:
+            return
         method, params = notification_parts(message)
         if method == "thread/settings/updated" and isinstance(
             params.get("threadId"), str
@@ -1354,6 +1365,18 @@ def codex_async_turn_handle(
 ) -> Any | None:
     if turn_id is None:
         return None
+    low_level = getattr(client, "_client", None)
+    if all(
+        callable(getattr(low_level, method, None))
+        for method in (
+            "turn_interrupt",
+            "turn_steer",
+            "register_turn_notifications",
+            "next_turn_notification",
+            "unregister_turn_notifications",
+        )
+    ):
+        return LowLevelTurnHandle(low_level, thread_id, turn_id)
     async_turn_handle = (
         getattr(sdk, "AsyncTurnHandle", None) if sdk is not None else None
     )

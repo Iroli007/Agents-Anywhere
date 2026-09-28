@@ -51,6 +51,9 @@ notifications for session status, output and interruptions. Unsupported native
 methods return an error. Planning mode uses the experimental native
 `thread/settings/update` interface; its request and acknowledgement were checked
 against the bundled Codex 0.144.4 schema without changing dependency versions.
+The notification adapter is tested with SDK 0.144.4 and 0.158.0. Ordinary turns
+reuse the SDK's existing event consumer; command turn controls do not create an
+additional subscription that could retain events or miss an early completion.
 
 ## DeepSeek Harness
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import subprocess
 import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -24,6 +25,7 @@ from connector.runtimes.codex.sdk.runtime_client import (
     CodexInterruptTurnRequest,
     CodexStartThreadRequest,
     CodexStartTurnRequest,
+    CodexSteerTurnRequest,
 )
 
 SERVER = r"""
@@ -81,6 +83,8 @@ for line in sys.stdin:
         result = {"reviewThreadId":"thread","turn":turn("review")}
     elif method == "turn/start":
         result = {"turn":turn("ordinary")}
+    elif method == "turn/steer":
+        result = {"turnId":params["expectedTurnId"]}
     else:
         result = {}
     result = config.get("results", {}).get(method, result)
@@ -146,11 +150,70 @@ async def fixture(tmp_path):
     try:
         yield client, wire, sdk
     finally:
-        # A failing routing test must also release SDK worker threads whose
-        # dedicated queue might otherwise be unregistered during cancellation.
-        for pending in list(sdk._client._sync._router._turn_notifications.values()):
-            pending.put(TransportClosedError("test fixture cleanup"))
         await client.stop()
+
+
+def assert_no_native_turn_buffers(sdk):
+    router = sdk._client._sync._router
+    assert router._turn_notifications == {}
+    if hasattr(router, "_turn_states"):
+        # SDK 0.158 tracks retained events and subscribers together. Neither may
+        # remain after an ordinary stream or for a globally observed command.
+        assert router._turn_states == {}
+        assert router._pending_turn_requests == {}
+    else:
+        assert router._pending_turn_notifications == {}
+
+
+def test_stop_with_active_ordinary_stream_releases_sdk_worker_process(tmp_path):
+    Wire(tmp_path)
+    server = tmp_path / "app_server.py"
+    server.write_text(SERVER)
+    probe = r"""
+import asyncio, faulthandler, sys
+import openai_codex
+from openai_codex import AsyncCodex, CodexConfig
+from connector.runtimes.codex.sdk.client import CodexSdkClient
+from connector.runtimes.codex.sdk.events import CodexSdkEvent
+from connector.runtimes.codex.sdk.runtime_client import CodexStartTurnRequest
+
+faulthandler.dump_traceback_later(3)
+async def run():
+    sdk = AsyncCodex(CodexConfig(
+        launch_args_override=(sys.executable, "-u", sys.argv[1], sys.argv[2])
+    ))
+    client = CodexSdkClient(sdk, sdk=openai_codex)
+    events = []
+    async def receive(message):
+        events.append(CodexSdkEvent.from_value(message).event_type)
+    await client.start(receive)
+    loop = asyncio.get_running_loop()
+    waiting = asyncio.Event()
+    next_notification = sdk._client._sync.next_turn_notification
+    def observed_next(turn_id):
+        loop.call_soon_threadsafe(waiting.set)
+        return next_notification(turn_id)
+    sdk._client._sync.next_turn_notification = observed_next
+    await client.start_turn(CodexStartTurnRequest("thread", "hello"))
+    await asyncio.wait_for(waiting.wait(), 2)
+    await asyncio.sleep(0.02)
+    # Exercise production shutdown directly: no router.fail_all test helper.
+    await client.stop()
+    assert client._stream_tasks == {}
+    assert sdk._client._sync._router._turn_notifications == {}
+    assert events == ["turn/started"], events
+asyncio.run(run())
+print("asyncio.run exited")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(server), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        timeout=8,
+        check=True,
+    )
+    assert "asyncio.run exited" in result.stdout
+    assert "Task exception was never retrieved" not in result.stderr
 
 
 def lifecycle(turn_id, *, completed=False):
@@ -427,6 +490,16 @@ def test_native_goal_turns_before_ack_and_followup_remain_visible_and_interrupti
             )
             await wire.notified(1)
             await client.interrupt_turn(CodexInterruptTurnRequest("thread", "goal-1"))
+            await client.steer_turn(
+                CodexSteerTurnRequest("thread", "goal-1", "  continue\ncarefully  ")
+            )
+            assert wire.calls("turn/steer") == [
+                {
+                    "threadId": "thread",
+                    "expectedTurnId": "goal-1",
+                    "input": [{"type": "text", "text": "  continue\ncarefully  "}],
+                }
+            ]
             wire.configure(
                 before={
                     "thread/goal/get": [
@@ -451,7 +524,7 @@ def test_native_goal_turns_before_ack_and_followup_remain_visible_and_interrupti
                 "turn/started",
                 "turn/completed",
             ]
-            assert sdk._client._sync._router._pending_turn_notifications == {}
+            assert_no_native_turn_buffers(sdk)
 
     asyncio.run(run())
 
@@ -479,7 +552,7 @@ def test_fast_inline_review_completion_before_ack_does_not_resurrect_a_turn(tmp_
                     CodexInterruptTurnRequest("thread", "review")
                 )
             assert len(wire.events) == 2
-            assert sdk._client._sync._router._pending_turn_notifications == {}
+            assert_no_native_turn_buffers(sdk)
 
     asyncio.run(run())
 
@@ -505,8 +578,7 @@ def test_ordinary_turn_after_command_keeps_one_stream_and_no_native_queue_leak(
                 "turn/started",
                 "turn/completed",
             ]
-            assert sdk._client._sync._router._pending_turn_notifications == {}
-            assert sdk._client._sync._router._turn_notifications == {}
+            assert_no_native_turn_buffers(sdk)
 
     asyncio.run(run())
 
@@ -524,6 +596,9 @@ def test_first_command_during_ordinary_turn_preserves_its_stream_and_interrupt(
                 "thread", "thread/goal/set", {"status": "paused"}
             )
             await client.interrupt_turn(CodexInterruptTurnRequest("thread", "ordinary"))
+            await client.steer_turn(
+                CodexSteerTurnRequest("thread", "ordinary", "use the existing turn")
+            )
             wire.configure(
                 before={
                     "thread/goal/get": [
@@ -551,9 +626,15 @@ def test_first_command_during_ordinary_turn_preserves_its_stream_and_interrupt(
             assert wire.calls("turn/interrupt") == [
                 {"threadId": "thread", "turnId": "ordinary"}
             ]
+            assert wire.calls("turn/steer") == [
+                {
+                    "threadId": "thread",
+                    "expectedTurnId": "ordinary",
+                    "input": [{"type": "text", "text": "use the existing turn"}],
+                }
+            ]
             assert client._stream_tasks == {}
-            assert sdk._client._sync._router._turn_notifications == {}
-            assert sdk._client._sync._router._pending_turn_notifications == {}
+            assert_no_native_turn_buffers(sdk)
 
     asyncio.run(run())
 
@@ -602,8 +683,7 @@ def test_first_command_while_ordinary_start_ack_is_pending_preserves_early_event
                 "turn/completed",
             ]
             assert client._stream_tasks == {}
-            assert sdk._client._sync._router._turn_notifications == {}
-            assert sdk._client._sync._router._pending_turn_notifications == {}
+            assert_no_native_turn_buffers(sdk)
 
     asyncio.run(run())
 
