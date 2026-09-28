@@ -195,6 +195,35 @@ def test_invalid_execution_state_is_reported_as_unknown(tmp_path, ok, result):
     assert rpc.command_calls == 1
 
 
+@pytest.mark.parametrize(
+    "ok, result",
+    [
+        (True, {"executionState": "accepted"}),
+        (True, {"executionState": "completed"}),
+        (False, {"executionState": "accepted", "retryable": False}),
+        (False, {}),
+        (False, {"retryable": True}),
+    ],
+)
+def test_unknown_outcome_code_cannot_report_success_or_allow_retry(tmp_path, ok, result):
+    client, url, headers, rpc = command_client(
+        tmp_path,
+        {
+            "command": "compact",
+            "ok": ok,
+            "code": "command_outcome_unknown",
+            "result": result,
+        },
+    )
+    response = client.post(url, headers=headers, json={"command": "compact"})
+
+    assert response.status_code == 200, response.text
+    assert response.json()["ok"] is False
+    assert response.json()["code"] == "command_outcome_unknown"
+    assert response.json()["result"] == {"executionState": "unknown", "retryable": False}
+    assert rpc.command_calls == 1
+
+
 def test_explicit_rpc_error_is_not_retried(tmp_path):
     client, url, headers, rpc = command_client(
         tmp_path, ConnectorRpcError("unsupported_command", "Command is unavailable.")

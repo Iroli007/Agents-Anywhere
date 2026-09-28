@@ -1348,6 +1348,7 @@ async def execute_session_command(
     if (
         (execution is not None and execution not in ("accepted", "completed", "unknown"))
         or (retryable is not None and type(retryable) is not bool)
+        or (result.get("code") == "command_outcome_unknown" and execution != "unknown")
         or (execution == "unknown" and (result["ok"] or retryable is not False))
     ):
         return _unknown_command_result(payload.command)
