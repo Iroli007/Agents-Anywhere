@@ -91,8 +91,8 @@ export function AppSidebar({ contained = false }: { contained?: boolean }) {
     [filter, projectSessionStatus, projects, sessions],
   )
   const pinnedSessions = React.useMemo(
-    () => selectPinnedSessions(sessions),
-    [sessions],
+    () => selectPinnedSessions(sessions, filter),
+    [filter, sessions],
   )
   const regularProjects = React.useMemo(
     () => selectRegularProjects(projects, sessions, projectSessionStatus, filter),

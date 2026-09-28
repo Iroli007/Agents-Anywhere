@@ -14,6 +14,7 @@ const {
 const { projectHasVisibleSessions } = await import("../src/components/sidebar/project-visibility.ts")
 const {
   selectPinnedProjects,
+  selectPinnedSessions,
   selectProjectSessions,
   selectRegularProjects,
 } = await import("../src/components/sidebar/sidebar-selectors.ts")
@@ -246,4 +247,24 @@ test("the pinned section applies the same device/Agent gate", () => {
   )
   assert.deepEqual(selectPinnedProjects([pinned], sessions, "active", { connectorId: "all", runtime: "claude" }), [])
   assert.deepEqual(selectPinnedProjects([pinned], [], "active", { connectorId: "all", runtime: "claude" }), [])
+})
+
+test("pinned sessions obey both identity gates without admitting archived or unpinned sessions", () => {
+  const sessions = [
+    session("p1", "codex", { pinned: true }),
+    session("p1", "claude", { pinned: true }),
+    session("p2", "codex", { connectorId: "conn-b", pinned: true }),
+    session("p1", "codex", { id: "archived", pinned: true, archived: true }),
+    session("p1", "codex", { id: "unpinned" }),
+  ]
+  for (const [filter, expectedIds] of [
+    [undefined, ["p1-codex-conn-a", "p1-claude-conn-a", "p2-codex-conn-b"]],
+    [all, ["p1-codex-conn-a", "p1-claude-conn-a", "p2-codex-conn-b"]],
+    [{ connectorId: "conn-a", runtime: "all" }, ["p1-codex-conn-a", "p1-claude-conn-a"]],
+    [{ connectorId: "all", runtime: "codex" }, ["p1-codex-conn-a", "p2-codex-conn-b"]],
+    [{ connectorId: "conn-a", runtime: "codex" }, ["p1-codex-conn-a"]],
+    [{ connectorId: "conn-b", runtime: "claude" }, []],
+  ]) {
+    assert.deepEqual(selectPinnedSessions(sessions, filter).map(item => item.id), expectedIds)
+  }
 })

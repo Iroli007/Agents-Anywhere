@@ -46,9 +46,10 @@ export function selectRegularProjects(
 
 export function selectPinnedSessions(
   sessions: WorkspaceSessionView[],
+  filter?: DeviceAgentFilter | null,
 ): WorkspaceSessionView[] {
   return sortSidebarSessions(
-    sessions.filter((session) => session.pinned && !session.archived),
+    filterProjectSessions(sessions, filter).filter((session) => session.pinned && !session.archived),
   )
 }
 
