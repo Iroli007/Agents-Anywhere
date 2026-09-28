@@ -134,6 +134,24 @@ Command execution returns a normal RPC result. If the runtime changes timeline, 
 
 If command catalog lookup or execution fails, Web must show an error and must not send the `/xxx` input as a normal message.
 
+Selecting a command with arguments inserts an editable draft; explicit submission
+preserves the full `raw` input. A command's `metadata.ui` selects native execution
+or a supported model/reasoning/permission selector. Commands without that metadata
+retain legacy single-line execution in idle/error states. Multiline input is
+allowed only when advertised. Attachments stay in the draft.
+
+Web distinguishes accepted, completed and unknown execution results, displays
+native text and treats `ok: false` as a failure even with HTTP 200. Failures and
+uncertain outcomes preserve input; unknown outcomes are never retried
+automatically. Late responses cannot clear newer drafts or change another
+session, including when the user leaves and revisits the original session.
+
+Refetch the catalog on session changes, command-menu reopening, reconnect,
+runtime status/availability changes and `session.commands` catalog revision
+changes. Hide a previous session's catalog immediately during navigation. Command
+availability still requires effective capabilities, an online writable session
+and the command's native status restrictions.
+
 ## Session RuntimeLive UI
 
 Web should render busy/blocking labels from RuntimeLive state. Action
