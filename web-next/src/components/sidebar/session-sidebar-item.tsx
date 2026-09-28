@@ -19,6 +19,8 @@ import {
 } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
+import { Separator } from "@/components/ui/separator"
+import { SessionAgentIcon } from "@/components/sidebar/session-agent-icon"
 import { OverflowMarquee } from "@/components/sidebar/overflow-marquee"
 import {
   SidebarMenuButton,
@@ -33,6 +35,7 @@ import {
 import { copyText } from "@/lib/clipboard"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
+import { useWorkspace } from "@/components/workspace-context"
 
 
 export function SessionSidebarItem({
@@ -45,7 +48,7 @@ export function SessionSidebarItem({
   onToggleArchive,
   onRename,
 }: {
-  item: { id: string; title?: string | null; status: string; unread: boolean; pinned: boolean; archived: boolean }
+  item: { runtime: string; runtimeType?: string; id: string; connectorId: string; projectId?: string | null; cwd?: string | null; title?: string | null; status: string; unread: boolean; pinned: boolean; archived: boolean }
   /** Optional `device · agent` identity line for sessions shown outside projects. */
   meta?: string | null
   inset?: boolean
@@ -58,6 +61,12 @@ export function SessionSidebarItem({
   const t = useTranslations("dashboard")
   const tSession = useTranslations("dashboard.session")
   const tCommon = useTranslations("common")
+  const { connectors, projects, sidebarShowsSessions } = useWorkspace()
+  const deviceName = connectors.find((connector) => connector.id === item.connectorId)?.name ?? item.connectorId
+  const projectName = projects.find((project) => project.id === item.projectId)?.name
+    || item.cwd?.split(/[\\/]/).filter(Boolean).pop()
+  const contextLabel = [deviceName, projectName].filter(Boolean).join(" · ")
+  const showContext = sidebarShowsSessions && !inset && Boolean(contextLabel)
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
   const [renaming, setRenaming] = React.useState(false)
@@ -121,40 +130,49 @@ export function SessionSidebarItem({
                 onClick={onOpen}
                 className={cn(
                   "text-muted-foreground data-[active=true]:text-foreground",
-                  inset && "pl-9",
-                  meta && "h-auto",
+                  (showContext || meta) && "h-auto flex-col items-stretch gap-1",
+                  inset && "pl-6 has-[>svg:first-child]:pl-6",
                   !hasStatusIndicator && "group-hover/session:pr-[4.25rem] group-focus-within/session:pr-[4.25rem]",
                   isActive && !hasStatusIndicator && "pr-[4.25rem]",
                 )}
               >
-                {meta ? (
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <OverflowMarquee
-                      text={item.title ?? ""}
-                      active={nameHovered}
-                      className="w-full flex-none"
-                    />
-                    <span className="block min-w-0 truncate text-[11px] leading-4 text-muted-foreground/80">
-                      {meta}
-                    </span>
-                  </span>
-                ) : (
+                <span className="flex min-w-0 w-full items-center gap-2">
+                  <SessionAgentIcon runtime={item.runtime} runtimeType={item.runtimeType} />
                   <OverflowMarquee text={item.title ?? ""} active={nameHovered} />
-                )}
-                <SessionSidebarIndicator
-                  busy={isBusy}
-                  unreadIdle={isUnreadIdle}
-                  waitingApproval={isWaitingApproval}
-                />
+                  <SessionSidebarIndicator
+                    busy={isBusy}
+                    unreadIdle={isUnreadIdle}
+                    waitingApproval={isWaitingApproval}
+                  />
+                </span>
+                {showContext ? (
+                  <OverflowMarquee
+                    text={contextLabel}
+                    active={nameHovered}
+                    className="w-full flex-none text-xs font-normal text-muted-foreground"
+                  />
+                ) : null}
+                {meta ? (
+                  <span className="block w-full min-w-0 truncate text-[11px] leading-4 text-muted-foreground/80">
+                    {meta}
+                  </span>
+                ) : null}
               </SidebarMenuButton>
             </div>
           </ContextMenuTrigger>
+
+          {showContext ? (
+            <div className="pointer-events-none absolute inset-x-3 bottom-0 group-last/session:hidden">
+              <Separator />
+            </div>
+          ) : null}
 
           {!hasStatusIndicator ? (
             <TooltipProvider delayDuration={300}>
               <div
                 className={cn(
                   "absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5",
+                  (showContext || meta) && "top-4",
                   "group-hover/session:flex group-focus-within/session:flex",
                   isActive && "flex",
                 )}

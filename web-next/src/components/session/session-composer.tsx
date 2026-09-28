@@ -4,6 +4,7 @@ import * as React from "react"
 import { ArrowUp, Check, ChevronDown, Loader2, Square } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -37,9 +38,11 @@ import {
   catalogItemDisabledReason,
   catalogItemEnabled,
   catalogI18nText,
+  isDshAutoReviewPermission,
   modelCatalogDisplayName,
   modelIdsForSelectionId,
   permissionIdForSelectionId,
+  permissionCatalogI18nText,
   selectionIdForModelCatalog,
   selectionIdForPermissionCatalog,
 } from "@/components/session/catalog-selection"
@@ -72,12 +75,14 @@ export function SessionComposer({
   onInterrupt,
   onCommand,
   onToggleTakeover,
+  attachedAbove = false,
 }: {
   token: string
   session: SessionView
   runtimeState?: SessionRuntimeState | null
   pendingInteractionCount: number
   creatingSession?: boolean
+  attachedAbove?: boolean
   sending: boolean
   interrupting: boolean
   takeoverBusy: boolean
@@ -94,6 +99,7 @@ export function SessionComposer({
     content: string,
     attachments: AttachedFile[],
     selections: { model?: string; permission?: string },
+    mode?: "queue" | "steer",
   ) => Promise<boolean>
   onInterrupt: () => void
   onCommand: (command: string, options: { args: string[]; raw: string }) => void
@@ -132,6 +138,12 @@ export function SessionComposer({
     !isStopping &&
     !isWaitingApproval &&
     !isBlocked
+  const [sendMode, setSendMode] = React.useState<"queue" | "steer">("queue")
+  const canSteer = connectorOnline && !sourceUnavailable && session.takeover && isRunning && capabilityIsUsable(effectiveCapabilities, CAPABILITY.steer, runtimeScope)
+  const sendCapability = findCapability(effectiveCapabilities, CAPABILITY.sendMessage, runtimeScope)
+  const busy = isWaiting || isRunning || isStopping || isWaitingApproval || isBlocked
+  const canQueue = busy && connectorOnline && !sourceUnavailable && Boolean(sendCapability?.supported && sendCapability.allowed)
+  const effectiveSendMode = canSteer ? sendMode : "queue"
   const canUseSendMessage = capabilityIsUsable(effectiveCapabilities, CAPABILITY.sendMessage, runtimeScope)
   const canUseInterrupt = capabilityIsUsable(effectiveCapabilities, CAPABILITY.interrupt, runtimeScope)
   const interruptCapability = findCapability(effectiveCapabilities, CAPABILITY.interrupt, runtimeScope)
@@ -161,11 +173,11 @@ export function SessionComposer({
     onDrop,
   } = useAttachments({ sessionId: creatingSession ? undefined : session.id, token, enabled: canUseAttachments, allowedMimeTypes })
   const canSend =
-    canUseSendMessage &&
+    (busy ? (effectiveSendMode === "steer" ? canSteer : canQueue) : canUseSendMessage) &&
     !creatingSession &&
-    !sending &&
+    (!sending || (busy && effectiveSendMode === "queue")) &&
     !interrupting &&
-    acceptsUserInput
+    (acceptsUserInput || busy)
   const canRunCommand = !creatingSession && !sending && !interrupting && acceptsUserInput
   const hasInput = value.trim().length > 0 || attachments.length > 0
   const attachmentsReady = attachmentsAllowed && (attachments.length === 0 || (allUploaded && !uploadsPending && !uploadFailed))
@@ -175,18 +187,20 @@ export function SessionComposer({
     interruptCapability.allowed &&
     (isWaiting || isRunning || isStopping || isWaitingApproval || isBlocked),
   )
-  const showInterrupt = !creatingSession && canUseInterrupt && activeSessionCanInterrupt
+  const showInterrupt = !value.trim() && attachments.length === 0 && !creatingSession && canUseInterrupt && activeSessionCanInterrupt
   const [selectedPermissionMode, setSelectedPermissionMode] = React.useState("")
   const [selectedModel, setSelectedModel] = React.useState("")
   const [selectedReasoning, setSelectedReasoning] = React.useState("")
   const permissionItems = permissionCatalog?.permissions.map((item) => ({
     id: item.id,
-    label: catalogI18nText(tNew, item.metadata, "labelKey", item.displayName),
-    description: catalogI18nText(tNew, item.metadata, "descriptionKey", item.description),
+    label: permissionCatalogI18nText(tNew, permissionCatalog, item, "labelKey"),
+    description: isDshAutoReviewPermission(permissionCatalog, item.id)
+      ? undefined : permissionCatalogI18nText(tNew, permissionCatalog, item, "descriptionKey"),
     default: item.default,
     enabled: catalogItemEnabled(item),
     disabledReason: catalogItemDisabledReason(item),
     selectionId: item.selectionId,
+    badge: isDshAutoReviewPermission(permissionCatalog, item.id) ? "EXP" : undefined,
   })) ?? []
   const modelItems = modelCatalog?.models.map((item) => ({
     id: item.id,
@@ -217,7 +231,10 @@ export function SessionComposer({
   const modelValue = modelSelectionValue?.modelId ?? ""
   const effortValue = modelSelectionValue?.reasoningId ?? ""
   const permissionLabel =
-    permissionItems.find((item) => item.id === selectedPermissionMode)?.label ?? (dsh ? actualPermission?.name : null) ?? tNew("permissionMode")
+    permissionItems.find((item) => item.id === selectedPermissionMode)?.label ??
+    (dsh && actualPermission
+      ? catalogI18nText(tNew, { preset: actualPermission.id }, "labelKey", actualPermission.name)
+      : null) ?? tNew("permissionMode")
   const modelLabel = selectedModelItem?.label ?? (dsh && actualModel?.model ? `${actualModel.model}（${actualModel.provider}）` : tNew("model"))
   const effortLabel = effortItems.find((item) => item.id === selectedReasoning)?.label ?? (dsh ? actualModel?.reasoningEffort : null) ?? tNew("reasoning")
   const hasSelectors = Boolean(permissionItems.length > 0 || modelItems.length > 0)
@@ -314,7 +331,7 @@ export function SessionComposer({
                 ? tSession("errorPlaceholder")
                 : tSession("replyPlaceholder")
   const commandQuery = commandQueryFromValue(value)
-  const showCommandMenu = commandQuery !== null && attachments.length === 0
+  const showCommandMenu = !busy && commandQuery !== null && attachments.length === 0
   const commandSuggestions = React.useMemo(
     () => runtimeCommands.filter((command) => commandMatchesQuery(command, commandQuery)),
     [commandQuery, runtimeCommands],
@@ -338,7 +355,7 @@ export function SessionComposer({
   const submit = async () => {
     if (!hasInput) return
     const command = commandFromValue(value, commandSuggestions)
-    if (commandQuery !== null && attachments.length === 0) {
+    if (!busy && commandQuery !== null && attachments.length === 0) {
       if (command && canRunCommand) {
         const parsed = parseCommandValue(value)
         updateValue("")
@@ -354,7 +371,7 @@ export function SessionComposer({
     const sent = await onSend(text, files, {
       ...(selectedModelSelection ? { model: selectedModelSelection } : {}),
       ...(selectedPermissionSelection ? { permission: selectedPermissionSelection } : {}),
-    })
+    }, busy ? effectiveSendMode : undefined)
     if (!sent && valueRef.current === "") {
       updateValue(text)
     }
@@ -370,7 +387,7 @@ export function SessionComposer({
 
   return (
     <div
-      className="shrink-0 px-4 pb-4 pt-2"
+      className={cn("shrink-0 px-4 pb-4", attachedAbove ? "pt-0" : "pt-2")}
       onDragEnter={onDragEnter}
       onDragLeave={onDragLeave}
       onDragOver={onDragOver}
@@ -439,7 +456,7 @@ export function SessionComposer({
                 if (event.nativeEvent.isComposing) return
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault()
-                  if (!showInterrupt) void submit()
+                  void submit()
                 }
               }}
               placeholder={placeholder}
@@ -493,6 +510,7 @@ export function SessionComposer({
                       >
                         <span className="size-1.5 shrink-0 rounded-full bg-primary" />
                         <span className="min-w-0 truncate text-foreground">{permissionLabel}</span>
+                        {permissionItems.find((item) => item.id === selectedPermissionMode)?.badge ? <Badge variant="secondary">EXP</Badge> : null}
                         <ChevronDown className="size-3.5 opacity-60" />
                       </Button>
                     </DropdownMenuTrigger>
@@ -509,7 +527,10 @@ export function SessionComposer({
                         >
                           <Check className={cn("mt-0.5 size-3.5", selectedPermissionMode === item.id ? "opacity-100" : "opacity-0")} />
                           <span className="min-w-0 flex-1">
-                            <span className="block font-medium leading-none">{item.label}</span>
+                            <span className="flex items-center gap-2 font-medium leading-none">
+                              <span>{item.label}</span>
+                              {item.badge ? <Badge variant="secondary">{item.badge}</Badge> : null}
+                            </span>
                             {(item.enabled ? item.description : item.disabledReason) ? (
                               <span className="mt-1 block whitespace-normal text-xs leading-snug text-muted-foreground">
                                 {item.enabled ? item.description : item.disabledReason}
@@ -641,16 +662,39 @@ export function SessionComposer({
               )}
               {tSession("takeover")}
             </div>
+            {busy ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button type="button" variant="ghost" size="sm" aria-label={tSession("sendMode")}>
+                    {tSession(effectiveSendMode === "steer" ? "steer" : "queueMessage")}
+                    <ChevronDown className="size-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onSelect={() => setSendMode("queue")}>
+                    {tSession("queueMessage")}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem disabled={!canSteer} onSelect={() => setSendMode("steer")}>
+                    {tSession(canSteer ? "steer" : "steerUnavailable")}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : null}
+            {hasInput && !creatingSession && canUseInterrupt && activeSessionCanInterrupt ? (
+              <Button type="button" size="icon" variant="ghost" className="size-8 shrink-0" aria-label={tSession("interrupt")} disabled={interrupting} onClick={onInterrupt}>
+                <Square className="size-4" />
+              </Button>
+            ) : null}
             <span className="mx-1 h-5 w-px shrink-0 bg-border" />
             <Button
               type="button"
               size="icon"
-              aria-label={showInterrupt ? tSession("interrupt") : tSession("send")}
+              aria-label={showInterrupt ? tSession("interrupt") : busy ? tSession(effectiveSendMode === "steer" ? "steer" : "queueMessage") : tSession("send")}
               className={cn("size-8 rounded-full", showInterrupt && "bg-destructive text-destructive-foreground hover:bg-destructive/90")}
               disabled={showInterrupt ? interrupting : !(canSubmitCommand || canSubmitMessage)}
               onClick={primaryAction}
             >
-              {sending || interrupting ? (
+              {(sending && !(busy && effectiveSendMode === "queue")) || interrupting ? (
                 <Loader2 className="size-4 animate-spin" />
               ) : showInterrupt ? (
                 <Square className="size-4" />
