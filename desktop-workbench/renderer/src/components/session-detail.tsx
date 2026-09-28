@@ -49,7 +49,7 @@ import { timelineRunCounts } from "@/components/session/timeline-summary"
 import { needsOlderTimelinePage } from "@/components/session/timeline-autofill"
 import { createTimelineScrollFollow } from "@/components/session/timeline-scroll-follow"
 import { createSessionEventBuffer } from "@/components/session/session-event-buffer"
-import { enqueueMessage, readMessageQueue, subscribeMessageQueue, emptyMessageQueue, drainMessageQueue, sendQueuedMessageNow, messageQueueIsPaused, pauseMessageQueue, resumeMessageQueue, freshMessageGoesToQueue } from "@/components/session/message-queue"
+import { enqueueMessage, readMessageQueue, subscribeMessageQueue, emptyMessageQueue, drainMessageQueue, sendQueuedMessageNow, messageQueueIsPaused, messageQueuePauseGeneration, pauseMessageQueue, resumeMessageQueue, freshMessageGoesToQueue } from "@/components/session/message-queue"
 import { CAPABILITY, capabilityIsUsable } from "@/components/session/capabilities"
 import { SessionMessageQueue } from "@/components/session/session-message-queue"
 import { SessionComposer, type AttachedFile } from "@/components/session/session-composer"
@@ -1218,6 +1218,7 @@ export function SessionDetail({
     if (sendInFlightRef.current) return false
     sendInFlightRef.current = true
     const resumeQueueAfterSend = !queuedMessageId && !mode && messageQueueIsPaused(session.id)
+    const capturedPauseGeneration = resumeQueueAfterSend ? messageQueuePauseGeneration(session.id) : undefined
     const clientMessageId = queuedMessageId ?? createClientId("msg")
     const messageText = content.trim() || tNew("attachmentOnlyPrompt")
     timelineFollowRef.current?.resume()
@@ -1269,10 +1270,13 @@ export function SessionDetail({
         attachments: uploadedAttachments.map((attachment) => ({ fileId: attachment.fileId })),
         clientMessageId,
       })
-      if (mode === "steer" && (result.result as { steered?: boolean })?.steered === false) {
-        throw new Error(tSession("steerFailed"))
+      if (mode === "steer") {
+        const steeringResult = result.result as { ok?: boolean; steered?: boolean } | undefined
+        if (steeringResult?.ok === false || steeringResult?.steered === false) {
+          throw new Error(tSession("steerFailed"))
+        }
       }
-      if (resumeQueueAfterSend) resumeMessageQueue(session.id)
+      if (resumeQueueAfterSend) resumeMessageQueue(session.id, capturedPauseGeneration)
       if (mode === "steer") toast.success(tSession("steered"))
       return true
     } catch (err) {

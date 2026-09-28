@@ -14,6 +14,7 @@ const listeners = new Set<() => void>()
 const empty: QueuedMessage[] = []
 // A user stop pauses this session's queue until an explicit send action resumes it.
 const paused = new Map<string, boolean>()
+const pauseGenerations = new Map<string, number>()
 const storageKey = (sessionId: string) => `aa:message-queue:${sessionId}`
 const pauseStorageKey = (sessionId: string) => `${storageKey(sessionId)}:paused`
 
@@ -51,6 +52,10 @@ export function messageQueueIsPaused(sessionId: string) {
   return paused.get(sessionId) === true
 }
 
+export function messageQueuePauseGeneration(sessionId: string) {
+  return pauseGenerations.get(sessionId) ?? 0
+}
+
 // Where a freshly composed message belongs. An explicit "queue" choice always queues and
 // steering never does; a queue held by an explicit stop must not swallow fresh intent, so
 // that message goes out directly and the held messages resume behind it.
@@ -61,6 +66,8 @@ export function freshMessageGoesToQueue(sessionId: string, options: { mode?: "qu
 }
 
 export function pauseMessageQueue(sessionId: string) {
+  // Every stop is fresh intent, including when a previous stop still holds the queue.
+  pauseGenerations.set(sessionId, messageQueuePauseGeneration(sessionId) + 1)
   if (messageQueueIsPaused(sessionId)) return
   paused.set(sessionId, true)
   try {
@@ -69,7 +76,8 @@ export function pauseMessageQueue(sessionId: string) {
   listeners.forEach(listener => listener())
 }
 
-export function resumeMessageQueue(sessionId: string) {
+export function resumeMessageQueue(sessionId: string, expectedPauseGeneration?: number) {
+  if (expectedPauseGeneration !== undefined && messageQueuePauseGeneration(sessionId) !== expectedPauseGeneration) return
   if (!messageQueueIsPaused(sessionId)) return
   paused.set(sessionId, false)
   try {
