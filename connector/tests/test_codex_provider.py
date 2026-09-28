@@ -496,7 +496,7 @@ def test_codex_provider_blocks_case_and_unicode_home_aliases(tmp_path: Path) -> 
     asyncio.run(run())
 
 
-def test_codex_provider_allows_only_one_instance(
+def test_codex_provider_allows_only_one_running_instance(
     tmp_path: Path,
 ) -> None:
     async def run() -> None:
@@ -522,11 +522,22 @@ def test_codex_provider_allows_only_one_instance(
         assert first.identity.runtime_id == "rti_codex_first"
         assert len(clients) == 1
 
-        with pytest.raises(RuntimeConflictError, match="at most 1 configured instance"):
+        await supervisor.validate_config(
+            RuntimeInstanceSpec("rti_codex_second", "codex", "Second Codex"),
+            {"codexHome": str(tmp_path / "first")},
+        )
+        with pytest.raises(RuntimeConflictError, match="at most 1 running instance"):
             await supervisor.start(
                 RuntimeInstanceSpec("rti_codex_second", "codex", "Second Codex"),
                 {"codexHome": str(tmp_path / "second")},
             )
+        await supervisor.stop("rti_codex_first")
+        await supervisor.start(
+            RuntimeInstanceSpec("rti_codex_second", "codex", "Second Codex"),
+            {"codexHome": str(tmp_path / "first")},
+        )
+        assert len(clients) == 2
+        await supervisor.stop("rti_codex_second")
 
     asyncio.run(run())
 

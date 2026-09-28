@@ -32,6 +32,11 @@ Runtime types and runtime instances carry different facts; Web must not mix them
   the connector's reason, not as a fault.
 - `starting` and `stopping` are real states. Web shows the transition instead of
   jumping from stopped straight to running.
+- `instancePolicy` and `maxInstances` limit simultaneously running instances.
+  Saved configurations do not hide an otherwise addable runtime type. The
+  Connector checks capacity when starting, and Server returns HTTP 409 with
+  `runtime_conflict` when the limit is reached. Stopping an instance releases
+  its running slot without deleting its configuration.
 
 ## New session
 
