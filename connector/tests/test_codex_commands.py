@@ -312,6 +312,44 @@ def test_late_terminal_does_not_hide_a_new_command_turn(terminal):
     run(check())
 
 
+def test_new_command_turn_remains_running_while_old_completion_is_published():
+    async def check():
+        runtime, _, host = await runtime_fixture()
+        publishing = asyncio.Event()
+        release = asyncio.Event()
+        original_end = host.session_turn_ended
+
+        async def slow_end(**values):
+            publishing.set()
+            await release.wait()
+            await original_end(**values)
+
+        host.session_turn_ended = slow_end
+
+        def event(method, turn_id):
+            return {
+                "method": method,
+                "params": {"threadId": "thread_1", "turn": {"id": turn_id}},
+            }
+
+        await runtime._handle_notification(event("turn/started", "ordinary"))
+        completed = asyncio.create_task(
+            runtime._handle_notification(event("turn/completed", "ordinary"))
+        )
+        await publishing.wait()
+        started = asyncio.create_task(
+            runtime._handle_notification(event("turn/started", "goal-followup"))
+        )
+        await asyncio.sleep(0)
+        release.set()
+        await asyncio.gather(completed, started)
+
+        assert runtime._active_turn_ids["sess_1"] == "goal-followup"
+        assert runtime._session_states.get("sess_1").status == "running"
+
+    run(check())
+
+
 @pytest.mark.parametrize(
     "text,target",
     [
