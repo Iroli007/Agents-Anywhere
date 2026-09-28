@@ -498,6 +498,10 @@ class CodexSdkClient:
 
     async def compact_thread(self, thread_id: str) -> CodexCompactResult:
         await ensure_codex_initialized(self._client)
+        # compact() only acknowledges scheduling; its turn has no SDK stream.
+        # Observe before resume/start so even notifications preceding the ACK
+        # reach the timeline instead of an unconsumed SDK turn queue.
+        self._observe_command_thread(thread_id)
         low_level_client = codex_low_level_client(self._client)
         if low_level_client is not None:
             await self.ensure_thread_resumed(
@@ -595,17 +599,7 @@ class CodexSdkClient:
                 raise RuntimeInvalidRequestError(
                     "Codex SDK cannot verify the native thread writer"
                 )
-            if self._command_notifications:
-                ordinary = tuple(
-                    turn_id
-                    for turn_id in self._stream_tasks
-                    if (turn := self._turns.get(turn_id)) is not None
-                    and (
-                        getattr(turn, "thread_id", None) == thread_id
-                        or self._turns.get(thread_id) is turn
-                    )
-                )
-                self._command_notifications.enable(thread_id, ordinary)
+            self._observe_command_thread(thread_id)
             await self.ensure_thread_resumed(
                 low_level, CodexResumeThreadRequest(thread_id)
             )
@@ -614,6 +608,19 @@ class CodexSdkClient:
                     "Codex has not acquired the native thread writer"
                 )
         return low_level
+
+    def _observe_command_thread(self, thread_id: str) -> None:
+        if self._command_notifications:
+            ordinary = tuple(
+                turn_id
+                for turn_id in self._stream_tasks
+                if (turn := self._turns.get(turn_id)) is not None
+                and (
+                    getattr(turn, "thread_id", None) == thread_id
+                    or self._turns.get(thread_id) is turn
+                )
+            )
+            self._command_notifications.enable(thread_id, ordinary)
 
     async def command_request(
         self, thread_id: str, method: str, params: Mapping[str, Any]

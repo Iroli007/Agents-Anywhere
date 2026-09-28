@@ -46,7 +46,7 @@ lock held by another Codex client produces a rejection; this integration does no
 take over the Codex App or IDE.
 
 The SDK adapter resumes the native thread before commands that need it. A native
-acceptance starts asynchronous work; review and goal turns use normal runtime
+acceptance starts asynchronous work; compaction, review and goal turns use normal runtime
 notifications for session status, output and interruptions. Unsupported native
 methods return an error. Planning mode uses the experimental native
 `thread/settings/update` interface; its request and acknowledgement were checked
@@ -54,6 +54,14 @@ against the bundled Codex 0.144.4 schema without changing dependency versions.
 The notification adapter is tested with SDK 0.144.4 and 0.158.0. Ordinary turns
 reuse the SDK's existing event consumer; command turn controls do not create an
 additional subscription that could retain events or miss an early completion.
+
+Compaction publishes a running timeline marker as soon as the native item starts,
+including when this arrives before the command acknowledgement. The same native
+item becomes a completed marker when compaction finishes. A failed or interrupted
+turn settles an unfinished marker as unsuccessful; Web and Desktop show that it
+did not complete. An acknowledgement alone does not mark compaction complete.
+History refreshes keep the same item identity and preserve an observed running
+status when the native snapshot omits item status.
 
 ## DeepSeek Harness
 
@@ -97,7 +105,8 @@ From `connector/`:
 
 ```bash
 uv run pytest -q tests/test_codex_commands.py tests/test_codex_sdk_commands.py \
-  tests/test_codex_runtime.py tests/test_dsh_commands.py tests/test_runtime_rpc_params.py
+  tests/test_codex_compaction.py tests/test_codex_runtime.py \
+  tests/test_dsh_commands.py tests/test_runtime_rpc_params.py
 ```
 
 From `server/`:

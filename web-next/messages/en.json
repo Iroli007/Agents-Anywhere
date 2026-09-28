@@ -917,6 +917,7 @@
       "reasoningSummary": "Reasoning · {count} notes",
       "conversationCompacting": "Compacting context",
       "conversationCompacted": "Conversation compacted",
+      "conversationCompactionFailed": "Context compaction did not complete",
       "loadOlder": "Load earlier messages",
       "expandMessage": "Show more",
       "collapseMessage": "Show less",

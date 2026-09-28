@@ -981,6 +981,7 @@
       "reasoningSummary": "推理过程 · {count} 条摘要",
       "conversationCompacting": "正在压缩上下文",
       "conversationCompacted": "对话已压缩",
+      "conversationCompactionFailed": "上下文压缩未完成",
       "loadOlder": "加载更早消息",
       "expandMessage": "展开",
       "collapseMessage": "收起",
