@@ -29,6 +29,7 @@ const dshPermissionLabelKeys: Record<string, string> = {
   "read-only": "permissionModes.dsh.readOnly.label",
   "workspace-write": "permissionModes.dsh.workspaceWrite.label",
   "danger-full-access": "permissionModes.dsh.fullAccess.label",
+  "auto": "permissionModes.dsh.autoReview.label",
 }
 
 export function catalogI18nText(

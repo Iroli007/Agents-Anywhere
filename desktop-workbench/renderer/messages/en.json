@@ -359,7 +359,8 @@
         "dsh": {
           "readOnly": { "label": "read-only" },
           "workspaceWrite": { "label": "workspace-write" },
-          "fullAccess": { "label": "danger-full-access" }
+          "fullAccess": { "label": "danger-full-access" },
+          "autoReview": { "label": "Auto review" }
         },
         "requestApproval": {
           "label": "Request approval",
