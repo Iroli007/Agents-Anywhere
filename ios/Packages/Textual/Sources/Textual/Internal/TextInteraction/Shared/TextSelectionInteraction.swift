@@ -16,21 +16,30 @@ struct TextSelectionInteraction: ViewModifier {
     @Environment(\.textSelection) private var textSelection
     @Environment(TextSelectionCoordinator.self) private var coordinator: TextSelectionCoordinator?
 
-    @State private var model = TextSelectionModel()
+    @State private var model = TextSelectionModel(
+      readsLayoutOnDemand: PlatformTextSelectionInteraction.readsLayoutOnDemand
+    )
   #endif
 
   func body(content: Content) -> some View {
     #if TEXTUAL_ENABLE_TEXT_SELECTION
       if textSelection.allowsSelection {
-        content
-          .overlayTextLayoutCollection { layoutCollection in
-            Color.clear
-              .onChange(of: AnyTextLayoutCollection(layoutCollection), initial: true) {
-                model.setCoordinator(coordinator)
-                model.setLayoutCollection(layoutCollection)
+        Group {
+          if model.readsLayout {
+            content
+              .overlayTextLayoutCollection { layoutCollection in
+                Color.clear
+                  .onChange(of: AnyTextLayoutCollection(layoutCollection), initial: true) {
+                    model.setCoordinator(coordinator)
+                    model.setLayoutCollection(layoutCollection)
+                  }
               }
+          } else {
+            // A dormant fragment scrolls and translates without querying its text layout.
+            content
           }
-          .modifier(PlatformTextSelectionInteraction(model: model))
+        }
+        .modifier(PlatformTextSelectionInteraction(model: model))
       } else {
         content
       }
