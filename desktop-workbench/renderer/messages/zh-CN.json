@@ -1445,6 +1445,8 @@
       "desktopSidebarDescription": "选择侧边栏中会话的组织方式。",
       "desktopSidebarShowSessions": "侧边栏显示会话",
       "desktopSidebarShowSessionsDescription": "直接显示会话，而不是按项目分组显示。",
+      "desktopSidebarCompactSessions": "单行显示会话",
+      "desktopSidebarCompactSessionsDescription": "只显示会话标题，不显示项目和设备那一行。仅在侧边栏显示会话时可用。",
       "desktopUnavailable": "当前环境没有提供 Desktop Connector 控制能力。",
       "desktopOnline": "在线",
       "desktopConnecting": "连接中",

@@ -64,13 +64,13 @@ export function SessionSidebarItem({
   const t = useTranslations("dashboard")
   const tSession = useTranslations("dashboard.session")
   const tCommon = useTranslations("common")
-  const { connectors, projects, sidebarShowsSessions } = useWorkspace()
+  const { connectors, projects, sidebarShowsSessions, sidebarCompactSessions } = useWorkspace()
   const deviceName = connectors.find((connector) => connector.id === item.connectorId)?.name ?? item.connectorId
   const projectName = projects.find((project) => project.id === item.projectId)?.name
     || item.cwd?.split(/[\\/]/).filter(Boolean).pop()
   const deviceLabel = previousConnectorId === item.connectorId ? "^" : deviceName
   const contextLabel = [projectName, deviceLabel].filter(Boolean).join(" · ")
-  const showContext = sidebarShowsSessions && !inset && Boolean(contextLabel)
+  const showContext = sidebarShowsSessions && !sidebarCompactSessions && !inset && Boolean(contextLabel)
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
   const [renaming, setRenaming] = React.useState(false)

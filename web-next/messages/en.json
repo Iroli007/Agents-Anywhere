@@ -1462,6 +1462,8 @@
       "desktopSidebarDescription": "Choose how sessions are organized in the sidebar.",
       "desktopSidebarShowSessions": "Show sessions in the sidebar",
       "desktopSidebarShowSessionsDescription": "Show sessions directly instead of grouping them under projects.",
+      "desktopSidebarCompactSessions": "Single-line sessions",
+      "desktopSidebarCompactSessionsDescription": "Show only the session title, without the project and device line. Available when sessions are shown in the sidebar.",
       "language": "Language",
       "languageDescription": "Choose the interface language for this browser.",
       "english": "English",
