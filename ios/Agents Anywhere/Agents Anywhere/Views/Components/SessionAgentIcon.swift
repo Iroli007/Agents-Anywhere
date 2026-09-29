@@ -5,7 +5,7 @@ import SwiftUI
 struct SessionAgentIcon: View {
     let runtime: String
     let runtimeType: String?
-    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 16
+    @ScaledMetric(relativeTo: .body) private var size: CGFloat = 18
 
     private var agent: (asset: String, label: String)? {
         let source = runtimeType?.trimmingCharacters(in: .whitespacesAndNewlines)

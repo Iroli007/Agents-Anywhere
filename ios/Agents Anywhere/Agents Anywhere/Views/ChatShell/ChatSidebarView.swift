@@ -337,7 +337,7 @@ struct ChatSidebarSessionRow: View {
         Button(action: onOpen) {
             HStack(spacing: 8) {
                 SessionAgentIcon(runtime: session.runtime, runtimeType: session.runtimeType)
-                    .foregroundStyle(isSelected ? .primary : .secondary)
+                    .foregroundStyle(.primary)
                 Text(session.title ?? String(localized: "Untitled session"))
                     .font(.body).foregroundStyle(.primary)
                     .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
