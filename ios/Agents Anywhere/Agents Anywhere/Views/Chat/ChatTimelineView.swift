@@ -22,6 +22,8 @@ struct ChatTimelineView: View {
     @State private var latestPromptVisible = false
     @State private var latestLoadRequest: Int?
     @State private var nativePhase = TimelineScrollState.Phase.idle
+    /// The return pill would sit on top of the keyboard while typing.
+    @State private var keyboardIsVisible = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.sidebarDrawerIsTransitioning) private var sidebarIsTransitioning
     @Environment(\.sidebarDrawerObscuresDetail) private var sidebarObscuresDetail
@@ -202,7 +204,7 @@ struct ChatTimelineView: View {
                 if scrolling.navigationGeneration == generation { scrolling.requestBottom() }
                 latestLoadRequest = nil
             }
-            if scrolling.showsBottomButton() {
+            if !keyboardIsVisible, scrolling.showsBottomButton() {
                 Button {
                     latestPull.cancel(); olderPull.cancel()
                     historyPosition?.cancelRestoration()
@@ -220,6 +222,12 @@ struct ChatTimelineView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .traceChatLayout("timeline-viewport")
         .onDisappear { viewportUpdates.cancel(); historyUpdates.cancel() }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            keyboardIsVisible = true
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            keyboardIsVisible = false
+        }
     }
     private func loadOlder() {
         guard model.session.isValid, model.session.hasOlderItems,
