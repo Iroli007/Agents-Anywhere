@@ -1891,7 +1891,7 @@
     "title": "Update available",
     "description": "The service has been upgraded. Update Desktop to stay compatible. Some features may stop working on older versions.",
     "currentVersion": "Current version {version}",
-    "latestVersion": "New version {version}",
+    "latestVersion": "Server version {version}",
     "ignore": "Ignore this version",
     "updateNow": "Update now",
     "entry": "Update available",
