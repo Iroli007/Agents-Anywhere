@@ -5,8 +5,6 @@ struct NewSessionWelcomeView<Workspace: View>: View {
     private static var revealDuration: Double { 0.4 }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.sidebarDrawerIsTransitioning) private var sidebarIsTransitioning
-    @Environment(\.sidebarDrawerObscuresDetail) private var sidebarObscuresDetail
     @ScaledMetric(relativeTo: .largeTitle) private var titleSize: CGFloat = 40
     @State private var copy = NewSessionWelcomeCopy.allCases.randomElement() ?? .start
     @State private var titlePhraseCount = 0
@@ -19,7 +17,6 @@ struct NewSessionWelcomeView<Workspace: View>: View {
     @State private var titleLedger = GlyphRevealLedger(duration: NewSessionWelcomeView.revealDuration)
     @State private var detailLedger = GlyphRevealLedger(duration: NewSessionWelcomeView.revealDuration)
 
-    private var canReveal: Bool { !sidebarIsTransitioning && !sidebarObscuresDetail }
     private var title: String { String(localized: copy.title) }
     private var detail: String {
         [String(localized: "dashboard.new.typewriter.rightDevice"),
@@ -39,7 +36,9 @@ struct NewSessionWelcomeView<Workspace: View>: View {
             // drawing begins, geometry updates must not cancel the reveal task.
             if !hasStarted { initialFrame = frame }
         }
-        .task(id: WelcomeRevealKey(canReveal: canReveal, reduceMotion: reduceMotion, frame: initialFrame)) { await reveal() }
+        .sidebarDrawerSettledTask(id: WelcomeRevealKey(reduceMotion: reduceMotion, frame: initialFrame)) { settled in
+            await reveal(canReveal: settled)
+        }
         .completionFeedback(trigger: revealCompletion)
     }
 
@@ -69,7 +68,7 @@ struct NewSessionWelcomeView<Workspace: View>: View {
             .accessibilityLabel(text)
     }
 
-    private func reveal() async {
+    private func reveal(canReveal: Bool) async {
         guard canReveal, !hasStarted, initialFrame.width > 0, initialFrame.height > 0 else { return }
         if !reduceMotion {
             // Navigation chrome, composer sizing and the cached workspace get
@@ -123,7 +122,6 @@ struct NewSessionWelcomeView<Workspace: View>: View {
 }
 
 private struct WelcomeRevealKey: Equatable {
-    let canReveal: Bool
     let reduceMotion: Bool
     let frame: CGRect
 }
