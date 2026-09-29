@@ -335,16 +335,18 @@ struct ChatSidebarSessionRow: View {
 
     var body: some View {
         Button(action: onOpen) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
+                SessionAgentIcon(runtime: session.runtime, runtimeType: session.runtimeType)
+                    .foregroundStyle(isSelected ? .primary : .secondary)
                 Text(session.title ?? String(localized: "Untitled session"))
                     .font(.body).foregroundStyle(.primary)
                     .lineLimit(1).frame(maxWidth: .infinity, alignment: .leading)
                 ChatSidebarSessionIndicator(indicator: session.presentation.indicator)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            // Match Web's inset session rows while keeping the selection and
-            // the touch target across the full sidebar width.
-            .padding(.leading, inset ? 36 : 10)
+            // Nested rows shift by at most half of the project's folder icon;
+            // selection and the touch target still span the sidebar width.
+            .padding(.leading, inset ? 19 : 10)
             .padding(.trailing, 10)
             .frame(minHeight: 42)
             .background(isSelected ? AppTheme.sidebarSelectionFill(colorScheme) : .clear, in: RoundedRectangle(cornerRadius: 9))
