@@ -205,9 +205,6 @@ function MessageCard({
           </div>
         ) : null}
         {!isUser ? attachmentList : null}
-        {isUser && item.source.rawType === "steeringUserMessage" && item.status !== "failed" ? (
-          <span className="text-xs text-muted-foreground">{tSession(item.source.optimistic ? "steering" : "steered")}</span>
-        ) : null}
         {showUserStatus ? <TimelineStatusBadge status={item.status} /> : null}
       </div>
     </div>

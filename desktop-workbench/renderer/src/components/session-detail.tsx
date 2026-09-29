@@ -49,9 +49,7 @@ import { timelineRunCounts } from "@/components/session/timeline-summary"
 import { needsOlderTimelinePage } from "@/components/session/timeline-autofill"
 import { createTimelineScrollFollow } from "@/components/session/timeline-scroll-follow"
 import { createSessionEventBuffer } from "@/components/session/session-event-buffer"
-import { enqueueMessage, readMessageQueue, subscribeMessageQueue, emptyMessageQueue, drainMessageQueue, sendQueuedMessageNow, messageQueueIsPaused, messageQueuePauseGeneration, pauseMessageQueue, resumeMessageQueue, freshMessageGoesToQueue } from "@/components/session/message-queue"
 import { CAPABILITY, capabilityIsUsable } from "@/components/session/capabilities"
-import { SessionMessageQueue } from "@/components/session/session-message-queue"
 import { SessionComposer, type AttachedFile } from "@/components/session/session-composer"
 import {
   acceptSessionEventId,
@@ -346,19 +344,6 @@ export function SessionDetail({
   )
   const [loading, setLoading] = React.useState(() => !initialOptimisticState)
   const [error, setError] = React.useState<string | null>(null)
-  const queuedMessages = React.useSyncExternalStore(
-    subscribeMessageQueue,
-    React.useCallback(() => readMessageQueue(sessionId), [sessionId]),
-    emptyMessageQueue,
-  )
-  const queuePaused = React.useSyncExternalStore(
-    subscribeMessageQueue,
-    React.useCallback(() => messageQueueIsPaused(sessionId), [sessionId]),
-    () => false,
-  )
-  const sendInFlightRef = React.useRef(false)
-  const activeSessionIdRef = React.useRef(sessionId)
-  activeSessionIdRef.current = sessionId
   const [sending, setSending] = React.useState(false)
   const [interrupting, setInterrupting] = React.useState(false)
   const [takeoverBusy, setTakeoverBusy] = React.useState(false)
@@ -1192,34 +1177,15 @@ export function SessionDetail({
 
   const handleSend = async (
     content: string,
-    attachments: Omit<AttachedFile, "file">[],
+    attachments: AttachedFile[],
     selections: { model?: string; permission?: string },
-    mode?: "queue" | "steer",
-    queuedMessageId?: string,
   ): Promise<boolean> => {
     if (!session || (!content.trim() && attachments.length === 0)) return false
     const uploadedAttachments = attachments.flatMap((attachment) =>
       attachment.uploaded ? [attachment.uploaded] : [],
     )
     if (uploadedAttachments.length !== attachments.length) return false
-    if (!queuedMessageId && freshMessageGoesToQueue(session.id, { mode, queuedCount: queuedMessages.length })) {
-      enqueueMessage(session.id, {
-        id: createClientId("msg"), content,
-        attachments: attachments.map(attachment => ({
-          id: attachment.id, name: attachment.name, type: attachment.type,
-          size: attachment.size, mediaType: attachment.mediaType,
-          uploadStatus: attachment.uploadStatus, uploaded: attachment.uploaded,
-        })),
-        selections, status: "queued",
-      })
-      attachments.forEach(attachment => { if (attachment.preview) URL.revokeObjectURL(attachment.preview) })
-      return true
-    }
-    if (sendInFlightRef.current) return false
-    sendInFlightRef.current = true
-    const resumeQueueAfterSend = !queuedMessageId && !mode && messageQueueIsPaused(session.id)
-    const capturedPauseGeneration = resumeQueueAfterSend ? messageQueuePauseGeneration(session.id) : undefined
-    const clientMessageId = queuedMessageId ?? createClientId("msg")
+    const clientMessageId = createClientId("msg")
     const messageText = content.trim() || tNew("attachmentOnlyPrompt")
     timelineFollowRef.current?.resume()
     const optimisticMessage = buildOptimisticUserMessage({
@@ -1230,7 +1196,6 @@ export function SessionDetail({
       items: state?.items ?? [],
       nextSeq: state?.nextSeq ?? eventSequenceCursor.current(sessionId),
     })
-    if (mode === "steer") optimisticMessage.source.rawType = "steeringUserMessage"
     addOptimisticMessage({
       clientMessageId,
       sessionId: session.id,
@@ -1238,20 +1203,20 @@ export function SessionDetail({
     })
     const previousRuntimeState = state?.state ?? null
     setState((current) => {
-      if (!current || current.session.id !== session.id) return current
+      if (!current) return current
       return {
         ...current,
-        state: mode === "steer" ? current.state : nextOptimisticRuntimeState(current.state, current.session, "waiting"),
+        state: nextOptimisticRuntimeState(current.state, current.session, "waiting"),
         items: mergeTimelineItems(current.items, [optimisticMessage]),
       }
     })
     setSending(true)
     try {
       const selectionPatch = selectionPatchFromComposerSelections(runtimeState?.selections ?? {}, selections)
-      if (mode !== "steer" && Object.keys(selectionPatch).length > 0) {
+      if (Object.keys(selectionPatch).length > 0) {
         const selectionResult = await dashboardApi.updateSessionSelections(token, session.id, selectionPatch)
         setState((current) =>
-          current?.session.id === session.id
+          current
             ? {
                 ...current,
                 state: runtimeStateWithSelectionResult(
@@ -1264,20 +1229,10 @@ export function SessionDetail({
             : current,
         )
       }
-      const result = await (mode === "steer"
-        ? dashboardApi.steerSessionMessage.bind(dashboardApi)
-        : dashboardApi.sendSessionMessage.bind(dashboardApi))(token, session.id, messageText, {
+      await dashboardApi.sendSessionMessage(token, session.id, messageText, {
         attachments: uploadedAttachments.map((attachment) => ({ fileId: attachment.fileId })),
         clientMessageId,
       })
-      if (mode === "steer") {
-        const steeringResult = result.result as { ok?: boolean; steered?: boolean } | undefined
-        if (steeringResult?.ok === false || steeringResult?.steered === false) {
-          throw new Error(tSession("steerFailed"))
-        }
-      }
-      if (resumeQueueAfterSend) resumeMessageQueue(session.id, capturedPauseGeneration)
-      if (mode === "steer") toast.success(tSession("steered"))
       return true
     } catch (err) {
       const nextSourceErrorCode = sessionSourceErrorCode(err)
@@ -1288,7 +1243,7 @@ export function SessionDetail({
           : tSession("sendFailed")
       markOptimisticMessageFailed(clientMessageId, message)
       setState((current) => {
-        if (!current || current.session.id !== session.id) return current
+        if (!current) return current
         return {
           ...current,
           state:
@@ -1311,26 +1266,17 @@ export function SessionDetail({
           sourceAvailabilityUpdatedAt: new Date().toISOString(),
           sourceObservationOrigin: "operation",
         }
-        setState((current) => current?.session.id === session.id ? { ...current, session: nextSession } : current)
+        setState((current) => current ? { ...current, session: nextSession } : current)
         onSessionUpdated?.(nextSession)
-        if (activeSessionIdRef.current === sessionId) setSourceErrorCode(nextSourceErrorCode)
+        setSourceErrorCode(nextSourceErrorCode)
       } else {
         toast.error(err instanceof Error ? err.message : tSession("sendFailed"))
       }
       return false
     } finally {
-      sendInFlightRef.current = false
-      if (activeSessionIdRef.current === sessionId) setSending(false)
+      setSending(false)
     }
   }
-
-  React.useEffect(() => {
-    if (!session || session.id !== sessionId || loading || sending || sendInFlightRef.current || interrupting
-      || !streamConnectedRef.current || !session.takeover || session.archived || session.connectorStatus !== "online"
-      || runtimeStatus !== "idle"
-      || !capabilityIsUsable(effectiveCapabilities, CAPABILITY.sendMessage, sessionRuntimeScope)) return
-    void drainMessageQueue(sessionId, message => handleSend(message.content, message.attachments, message.selections, undefined, message.id))
-  })
 
   const handleDismissTakeover = () => {
     setPendingTakeover(null)
@@ -1364,9 +1310,6 @@ export function SessionDetail({
 
   const handleInterrupt = async () => {
     if (!session || interrupting) return
-    // Stopping the turn must also hold the queue, and it has to happen before the request
-    // settles: once the turn ends the drain effect would otherwise send the next message.
-    pauseMessageQueue(session.id)
     setInterrupting(true)
     try {
       await dashboardApi.interruptSession(token, session.id)
@@ -1375,23 +1318,6 @@ export function SessionDetail({
     } finally {
       setInterrupting(false)
     }
-  }
-
-  const handleSendQueuedNow = (id: string) => {
-    if (!session || sending || interrupting || sendInFlightRef.current) return
-    void sendQueuedMessageNow(session.id, id, async () => {
-      if (runtimeStatus === "idle") return true
-      setInterrupting(true)
-      try {
-        await dashboardApi.interruptSession(token, session.id)
-        return true
-      } catch (err) {
-        toast.error(err instanceof Error ? err.message : tSession("interruptFailed"))
-        return false
-      } finally {
-        if (activeSessionIdRef.current === sessionId) setInterrupting(false)
-      }
-    })
   }
 
   const handleSessionCommand = async (
@@ -1849,25 +1775,12 @@ export function SessionDetail({
           {onOpenReview && turnReviewDisplay.activeReview ? (
             <SessionReviewTag files={turnReviewDisplay.activeReview.files} onReview={() => onOpenReview()} />
           ) : null}
-          <SessionMessageQueue
-            key={sessionId}
-            sessionId={sessionId}
-            messages={queuedMessages}
-            paused={queuePaused}
-            canSendNow={Boolean(session.takeover && !session.archived && session.connectorStatus === "online" && !sending && !interrupting && (
-              runtimeStatus === "idle"
-                ? capabilityIsUsable(effectiveCapabilities, CAPABILITY.sendMessage, sessionRuntimeScope)
-                : capabilityIsUsable(effectiveCapabilities, CAPABILITY.interrupt, sessionRuntimeScope)
-            ))}
-            onSendNow={handleSendQueuedNow}
-          />
           <SessionComposer
             token={token}
             session={session}
             runtimeState={runtimeState}
             pendingInteractionCount={blockingInteractionCount}
             creatingSession={isLocalOptimisticSession}
-            attachedAbove={queuedMessages.length > 0}
             sending={sending}
             interrupting={interrupting}
             takeoverBusy={takeoverBusy}
