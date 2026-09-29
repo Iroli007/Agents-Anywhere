@@ -135,7 +135,6 @@ private fun RemoteTimelineItem.toMessageOrNull(): TimelineMessage? {
         contentHash = contentHash,
         sourceRuntime = source.text("runtime"),
         sourceItemType = source.text("itemType"),
-        sourceRawType = source.text("rawType"),
         sourceReplacedBy = source.text("replacedBy"),
     )
 }

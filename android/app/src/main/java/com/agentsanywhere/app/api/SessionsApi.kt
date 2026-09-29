@@ -1010,7 +1010,6 @@ class SessionsApi(
             ok = optBoolean("ok", false),
             errorCode = error?.optNullableString("code"),
             errorMessage = error?.optNullableString("message"),
-            result = optJSONObject("result").toMap(),
         )
     }
 

@@ -205,7 +205,6 @@ data class RemoteRpcResponse(
     val ok: Boolean,
     val errorCode: String?,
     val errorMessage: String?,
-    val result: Map<String, Any?> = emptyMap(),
 )
 
 data class RemoteSessionSelectionPatchResponse(
