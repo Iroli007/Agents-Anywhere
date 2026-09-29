@@ -46,6 +46,9 @@ import type { ProjectView } from "@/features/dashboard/types"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
 
+/** Sessions shown per expanded project before "show more". */
+const PROJECT_SESSION_PREVIEW = 8
+
 export function ProjectSidebarItem({
   project,
   sessions,
@@ -82,6 +85,12 @@ export function ProjectSidebarItem({
   const t = useTranslations("dashboard")
   const [nameHovered, setNameHovered] = React.useState(false)
   const [optionsOpen, setOptionsOpen] = React.useState(false)
+  const [showsAllSessions, setShowsAllSessions] = React.useState(false)
+  const collapsesSessions = !showsAllSessions && sessions.length > PROJECT_SESSION_PREVIEW
+  // Keep the open session visible even when it sorts past the preview.
+  const visibleSessions = collapsesSessions
+    ? sessions.filter((session, index) => index < PROJECT_SESSION_PREVIEW || session.id === activeSessionId)
+    : sessions
   const containsActiveSession = sessions.some((session) => session.id === activeSessionId)
   // The identity line is the second row and only carries the dimensions that
   // are filtered right now; `null` keeps the row exactly as it was before.
@@ -214,7 +223,7 @@ export function ProjectSidebarItem({
             {sessions.length === 0 ? (
               <li className="py-2 pl-4.5 pr-3 text-xs text-muted-foreground">{t("projects.noSessions")}</li>
             ) : (
-              sessions.map((session) => (
+              visibleSessions.map((session) => (
                 <SessionSidebarItem
                   key={session.id}
                   item={session}
@@ -227,6 +236,19 @@ export function ProjectSidebarItem({
                 />
               ))
             )}
+            {sessions.length > PROJECT_SESSION_PREVIEW ? (
+              <li>
+                <button
+                  type="button"
+                  onClick={() => setShowsAllSessions((value) => !value)}
+                  className="w-full rounded-xl py-1.5 pl-4.5 pr-3 text-left text-xs text-muted-foreground transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+                >
+                  {showsAllSessions
+                    ? t("projects.showFewerSessions")
+                    : t("projects.showMoreSessions", { count: sessions.length - visibleSessions.length })}
+                </button>
+              </li>
+            ) : null}
           </SidebarMenu>
         </CollapsibleContent>
       </Collapsible>

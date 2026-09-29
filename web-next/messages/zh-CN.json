@@ -518,7 +518,9 @@
       "workspaceConflictConfirm": "继续并重命名",
       "workspaceConflictDescription": "工作目录“{path}”已属于项目“{currentName}”。继续后不会创建新项目，而会把现有项目重命名为“{name}”；项目内的会话和设置都会保留。",
       "workspaceConflictTitle": "该工作目录已有项目",
-      "workspaceImmutable": "项目创建后，工作区不能更换。"
+      "workspaceImmutable": "项目创建后，工作区不能更换。",
+      "showMoreSessions": "显示更多（{count}）",
+      "showFewerSessions": "收起"
     },
     "mobileConnections": {
       "accountUnavailable": "当前账号不可用，请重新登录后再试。",

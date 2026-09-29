@@ -42,6 +42,7 @@ export function SessionSidebarItem({
   item,
   meta = null,
   inset = false,
+  previousConnectorId = null,
   isActive,
   onOpen,
   onTogglePin,
@@ -52,6 +53,8 @@ export function SessionSidebarItem({
   /** Optional `device · agent` identity line for sessions shown outside projects. */
   meta?: string | null
   inset?: boolean
+  /** Device of the row above; a repeated device collapses to `^`. */
+  previousConnectorId?: string | null
   isActive: boolean
   onOpen: () => void
   onTogglePin: () => void
@@ -65,7 +68,8 @@ export function SessionSidebarItem({
   const deviceName = connectors.find((connector) => connector.id === item.connectorId)?.name ?? item.connectorId
   const projectName = projects.find((project) => project.id === item.projectId)?.name
     || item.cwd?.split(/[\\/]/).filter(Boolean).pop()
-  const contextLabel = [deviceName, projectName].filter(Boolean).join(" · ")
+  const deviceLabel = previousConnectorId === item.connectorId ? "^" : deviceName
+  const contextLabel = [projectName, deviceLabel].filter(Boolean).join(" · ")
   const showContext = sidebarShowsSessions && !inset && Boolean(contextLabel)
   const [renameOpen, setRenameOpen] = React.useState(false)
   const [titleDraft, setTitleDraft] = React.useState(item.title ?? "")
@@ -118,8 +122,10 @@ export function SessionSidebarItem({
   return (
     <>
       <ContextMenu>
+        {/* Session rows bleed through the group and content padding so the
+            selection reads as a full-width bar. */}
         <SidebarMenuItem
-          className="group/session"
+          className="group/session -mx-4"
           onPointerEnter={() => setNameHovered(true)}
           onPointerLeave={() => setNameHovered(false)}
         >
@@ -129,11 +135,11 @@ export function SessionSidebarItem({
                 isActive={isActive}
                 onClick={onOpen}
                 className={cn(
-                  "text-muted-foreground data-[active=true]:text-foreground",
+                  "rounded-none px-7 text-muted-foreground data-[active=true]:text-foreground",
                   (showContext || meta) && "h-auto flex-col items-stretch gap-1",
-                  inset && "pl-4.5 has-[>svg:first-child]:pl-4.5",
-                  !hasStatusIndicator && "group-hover/session:pr-[4.25rem] group-focus-within/session:pr-[4.25rem]",
-                  isActive && !hasStatusIndicator && "pr-[4.25rem]",
+                  inset && "pl-8.5 has-[>svg:first-child]:pl-8.5",
+                  !hasStatusIndicator && "group-hover/session:pr-[5.25rem] group-focus-within/session:pr-[5.25rem]",
+                  isActive && !hasStatusIndicator && "pr-[5.25rem]",
                 )}
               >
                 <span className="flex min-w-0 w-full items-center gap-2">
@@ -162,7 +168,7 @@ export function SessionSidebarItem({
           </ContextMenuTrigger>
 
           {showContext ? (
-            <div className="pointer-events-none absolute inset-x-3 bottom-0 group-last/session:hidden">
+            <div className="pointer-events-none absolute inset-x-7 bottom-0 group-last/session:hidden">
               <Separator />
             </div>
           ) : null}
@@ -171,7 +177,7 @@ export function SessionSidebarItem({
             <TooltipProvider delayDuration={300}>
               <div
                 className={cn(
-                  "absolute right-1 top-1/2 hidden -translate-y-1/2 items-center gap-0.5",
+                  "absolute right-5 top-1/2 hidden -translate-y-1/2 items-center gap-0.5",
                   (showContext || meta) && "top-4",
                   "group-hover/session:flex group-focus-within/session:flex",
                   isActive && "flex",

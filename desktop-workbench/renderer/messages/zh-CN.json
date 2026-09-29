@@ -799,6 +799,8 @@
       "workspaceConflictDescription": "工作目录“{path}”已属于项目“{currentName}”。继续后不会创建新项目，而会把现有项目重命名为“{name}”；项目内的会话和设置都会保留。",
       "workspaceConflictTitle": "该工作目录已有项目",
       "workspaceImmutable": "项目创建后，工作区不能更换。",
+      "showMoreSessions": "显示更多（{count}）",
+      "showFewerSessions": "收起",
       "create": "创建项目",
       "nameDescription": "根据目录自动生成，可自行修改。",
       "nameAdjusted": "已自动调整名称，避免与已有项目重名。",
