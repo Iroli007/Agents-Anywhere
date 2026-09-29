@@ -87,9 +87,7 @@ struct ChatSidebarView: View {
                             Text("Recent").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                             Spacer()
                             ChatSidebarListMenu(showsSessionList: $showsSessionList,
-                                onShowArchives: { showsArchives = true }) {
-                                Toggle(String(localized: "单行显示"), isOn: $compactSessionList)
-                            }
+                                onShowArchives: { showsArchives = true }) {}
                         }
                         .padding(.horizontal, 10).padding(.top, 16)
                         ChatSidebarSessionSection(

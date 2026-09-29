@@ -15263,19 +15263,19 @@
         }
       }
     },
-    "单行显示": {
+    "Single-line sessions": {
       "extractionState": "manual",
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Single-line rows"
+            "value": "Single-line sessions"
           }
         },
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "单行显示"
+            "value": "单行显示会话"
           }
         }
       }
