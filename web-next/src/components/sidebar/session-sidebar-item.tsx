@@ -131,7 +131,7 @@ export function SessionSidebarItem({
                 className={cn(
                   "text-muted-foreground data-[active=true]:text-foreground",
                   (showContext || meta) && "h-auto flex-col items-stretch gap-1",
-                  inset && "pl-6 has-[>svg:first-child]:pl-6",
+                  inset && "pl-4.5 has-[>svg:first-child]:pl-4.5",
                   !hasStatusIndicator && "group-hover/session:pr-[4.25rem] group-focus-within/session:pr-[4.25rem]",
                   isActive && !hasStatusIndicator && "pr-[4.25rem]",
                 )}

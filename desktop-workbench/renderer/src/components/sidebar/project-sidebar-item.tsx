@@ -212,7 +212,7 @@ export function ProjectSidebarItem({
         <CollapsibleContent>
           <SidebarMenu>
             {sessions.length === 0 ? (
-              <li className="py-2 pl-6 pr-3 text-xs text-muted-foreground">{t("projects.noSessions")}</li>
+              <li className="py-2 pl-4.5 pr-3 text-xs text-muted-foreground">{t("projects.noSessions")}</li>
             ) : (
               sessions.map((session) => (
                 <SessionSidebarItem
