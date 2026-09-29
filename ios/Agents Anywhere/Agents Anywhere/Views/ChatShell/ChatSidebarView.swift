@@ -26,6 +26,8 @@ struct ChatSidebarView: View {
     @State private var isShowingPairing = false
     @State private var showsArchives = false
     @AppStorage(ProjectSidebarPreferences.sessionListKey) private var showsSessionList = false
+    /// Flat list only: one line per session, without the project · device line.
+    @AppStorage(ProjectSidebarPreferences.compactSessionListKey) private var compactSessionList = false
 
     private static let contentInset: CGFloat = 14
 
@@ -70,7 +72,7 @@ struct ChatSidebarView: View {
                         sessions: pinnedSessions,
                         selectedSessionId: selectedSessionId,
                         emptyMessage: "No pinned sessions",
-                        context: showsSessionList ? { sessionContext($0, after: $1) } : nil,
+                        context: showsSessionList && !compactSessionList ? { sessionContext($0, after: $1) } : nil,
                         onOpen: onOpenSession,
                         onRename: onRenameSession,
                         onTogglePinned: onToggleSessionPinned,
@@ -85,7 +87,9 @@ struct ChatSidebarView: View {
                             Text("Recent").font(.subheadline.weight(.semibold)).foregroundStyle(.secondary)
                             Spacer()
                             ChatSidebarListMenu(showsSessionList: $showsSessionList,
-                                onShowArchives: { showsArchives = true }) {}
+                                onShowArchives: { showsArchives = true }) {
+                                Toggle(String(localized: "单行显示"), isOn: $compactSessionList)
+                            }
                         }
                         .padding(.horizontal, 10).padding(.top, 16)
                         ChatSidebarSessionSection(
@@ -94,7 +98,7 @@ struct ChatSidebarView: View {
                             selectedSessionId: selectedSessionId,
                             isLoading: isLoadingSessions,
                             emptyMessage: "No sessions yet",
-                            context: { sessionContext($0, after: $1) },
+                            context: compactSessionList ? nil : { sessionContext($0, after: $1) },
                             onOpen: onOpenSession,
                             onRename: onRenameSession,
                             onTogglePinned: onToggleSessionPinned,

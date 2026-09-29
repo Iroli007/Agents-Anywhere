@@ -15262,6 +15262,23 @@
           }
         }
       }
+    },
+    "单行显示": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Single-line rows"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "单行显示"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
