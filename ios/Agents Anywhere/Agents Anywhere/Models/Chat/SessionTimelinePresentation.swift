@@ -36,11 +36,14 @@ final class ChatTimelineRowModel: Identifiable {
         if value != next { value = next }
         let nextStructure = TimelineRowStructure(next)
         if structure != nextStructure { structure = nextStructure }
-        if !animate || (!next.isStreamingText && now >= settlesAt) { isRevealing = false }
+        if !animate || now >= settlesAt { isRevealing = false }
     }
 
+    /// The drawing clock follows the last revealed batch, not the item's
+    /// running status. A tool wait or thinking pause stops redrawing; the next
+    /// appended text starts a new batch.
     func settle(now: TimeInterval) {
-        if !value.isStreamingText && now >= settlesAt { isRevealing = false }
+        if now >= settlesAt { isRevealing = false }
     }
 }
 

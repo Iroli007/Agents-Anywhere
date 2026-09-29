@@ -30,6 +30,21 @@ import Testing
         #expect(!row.isRevealing)
     }
 
+    @Test func runningReplyStopsRevealingWhenTextPauses() throws {
+        let timeline = SessionTimelinePresentation()
+        timeline.stage([try item("Hello")], animate: false); timeline.flush(now: 0)
+        let row = try #require(timeline.rows.first)
+        timeline.stage([try item("Hello world", revision: 2)], animate: true)
+        timeline.flush(now: 1)
+        #expect(row.isRevealing)
+        // Still running (e.g. waiting on a tool), but no new glyphs to draw.
+        timeline.flush(now: 2)
+        #expect(!row.isRevealing)
+        timeline.stage([try item("Hello world again", revision: 3)], animate: true)
+        timeline.flush(now: 3)
+        #expect(row.isRevealing)
+    }
+
     @Test func completedShortReplyStillRevealsAndRecoveryNeverReplaysHistory() throws {
         let timeline = SessionTimelinePresentation()
         timeline.stage([], animate: false); timeline.flush(now: 0)
