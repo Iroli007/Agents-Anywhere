@@ -276,7 +276,6 @@ class DevicesApi(
             schema = optJSONObject("schema")?.toMap(),
             uiSchema = optJSONObject("uiSchema").toMap(),
             config = optJSONObject("config")?.toMap(),
-            defaults = optJSONObject("defaults").toMap(),
             error = optJSONObject("error")?.toMap(),
             lastDiscoveredAt = optNullableString("lastDiscoveredAt"),
             updatedAt = optNullableString("updatedAt"),
