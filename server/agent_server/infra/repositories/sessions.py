@@ -335,7 +335,7 @@ class SessionRepositoryMixin:
                     model_selection_id=model_selection_id,
                     permission_selection_id=permission_selection_id,
                     external_session_id=external_session_id,
-                    title=title,
+                    title=_client_session_title(title),
                     cwd=cwd,
                     status="idle",
                     takeover=int(takeover),
