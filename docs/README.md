@@ -6,7 +6,6 @@
 | --- | --- |
 | 安装客户端、登录、连接设备 | [安装与首次使用](getting-started.md) |
 | 查看 2.0.0 安装包和发布边界 | [2.0.0 发布说明](releases/2.0.0.md) |
-| 2.1.0 的接口变化与最低配套版本 | [2.1.0 发布说明](releases/2.1.0.md) |
 | 部署自己的服务 | [Docker](../docker/README.md)、[Server](../server/README.md) |
 | 升级已有部署或从 v1 迁移 | [升级指南](upgrading.md) |
 | 版本号含义与发版规则 | [版本号规则](versioning.md) |
