@@ -775,7 +775,12 @@ class DeviceRuntimeService:
                 "error",
                 error={"code": exc.code, "message": exc.message},
             )
-            raise DeviceRuntimeUpstreamError(exc.message, detail=row["error"]) from exc
+            error_cls = (
+                DeviceRuntimeConflictError
+                if exc.code == "runtime_conflict"
+                else DeviceRuntimeUpstreamError
+            )
+            raise error_cls(exc.message, detail=row["error"]) from exc
         # A local service may be waiting for its Bridge while the switch stays on.
         # Older connectors omit status on successful starts.
         status = result.get("status", "running")
