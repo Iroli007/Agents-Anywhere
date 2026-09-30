@@ -40,6 +40,7 @@ import { useWorkspace } from "@/components/workspace-context"
 import { useAuth } from "@/components/auth/auth-context"
 import { dashboardApi } from "@/features/dashboard/api"
 import { createClientId } from "@/lib/id"
+import { sessionTitleFromPrompt } from "@/lib/session-title"
 import { cn } from "@/lib/utils"
 import { useElementWidth } from "@/hooks/use-element-width"
 import { useIsMobile } from "@/hooks/use-mobile"
@@ -749,7 +750,7 @@ export function TaskComposer() {
       runtimeName: selectedRuntime ? runtimeInstanceName(selectedRuntime) : null,
       runtimeTypeDisplayName: selectedRuntime ? runtimeTypeName(selectedRuntime) : null,
       externalSessionId: null,
-      title: prompt.trim() || null,
+      title: sessionTitleFromPrompt(prompt),
       cwd: project.workspacePath,
       status: "waiting",
       takeover: true,
@@ -821,7 +822,7 @@ export function TaskComposer() {
           selectedRuntime?.runtimeType ?? selectedAgent,
           selectedRuntime?.runtimeId ?? selectedAgent,
         ),
-        title: prompt.trim() || undefined,
+        title: sessionTitleFromPrompt(prompt) ?? undefined,
         cwd: project.workspacePath,
         ...(selectedRuntime?.runtimeType === "dsh" ? {
           runtimeOptions: {
