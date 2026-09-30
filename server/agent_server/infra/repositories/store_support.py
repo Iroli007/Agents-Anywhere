@@ -84,6 +84,7 @@ USERNAME_RE = re.compile(r"^[a-z0-9_-]{3,32}$")
 SETTING_REGISTRATION_OPEN = "registration_open"
 SETTING_OAUTH_REGISTRATION_OPEN = "oauth_registration_open"
 SETTING_OAUTH_PROVIDER = "oauth_provider"
+SETTING_PASSWORD_RESET_ENABLED = "password_reset_enabled"
 
 UserRole = str  # "admin" | "member"
 ADMIN_ROLE = "admin"
