@@ -1,6 +1,7 @@
 import { localRuntimePath } from "./local-runtime";
 import type { OwnershipState } from "./local-runtime";
 import { ConnectorRpcError, CONNECTOR_CONFLICT_MESSAGE } from "./connector-rpc-error";
+import { materializeConnectorProject } from "./connector-project";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -33,6 +34,8 @@ type PendingRequest = {
  */
 const FIRST_RUN_TIMEOUT_MS = 15 * 60_000;
 const DEFAULT_RPC_TIMEOUT_MS = 30_000;
+const PYTHON_BUILDS_GITHUB = "https://github.com/astral-sh/python-build-standalone/releases/download";
+const UV_HTTP_TIMEOUT_SECONDS = "60";
 
 type ConnectorSupervisorOptions = {
   onOwnership?: (state: OwnershipState) => void;
@@ -66,6 +69,8 @@ export class ConnectorSupervisor {
   private readonly pending = new Map<number, PendingRequest>();
   private shuttingDown = false;
   private keepRuntimeRunning = false;
+  /** The directory `uv run --project` uses; a writable copy when packaged. */
+  private projectDir: string | null = null;
   private crashCount = 0;
   private restartTimer: NodeJS.Timeout | null = null;
   private suppressProcessRestart = false;
@@ -106,7 +111,8 @@ export class ConnectorSupervisor {
     const current = this.options.settings.get();
     const launcherChanged =
       previous.uvPath !== current.uvPath ||
-      previous.uvPypiIndexUrl !== current.uvPypiIndexUrl;
+      previous.uvPypiIndexUrl !== current.uvPypiIndexUrl ||
+      previous.uvPythonInstallMirror !== current.uvPythonInstallMirror;
     this.refreshLocalState();
     if (!launcherChanged) return this.emitState();
     if (!this.resolveLauncher()) {
@@ -341,10 +347,10 @@ export class ConnectorSupervisor {
     if (this.state.setupIssue && (requiresConfig || this.state.setupIssue !== "configMissing")) {
       throw new Error(`Connector setup is not ready: ${this.state.setupIssue}`);
     }
-    const launcher = this.resolveLauncher();
+    const launcher = this.resolveLauncher(true);
     if (!launcher) throw new Error(`Connector setup is not ready: ${this.state.setupIssue || "launcherMissing"}`);
     const child = spawn(launcher.executable, launcher.args, {
-      cwd: this.options.connectorDir,
+      cwd: this.projectDir ?? this.options.connectorDir,
       env: this.connectorEnvironment(),
       detached: process.platform !== "win32",
       windowsHide: true,
@@ -527,7 +533,8 @@ export class ConnectorSupervisor {
     this.suppressProcessRestart = previousSuppression;
   }
 
-  private resolveLauncher(): ConnectorLauncher | null {
+  /** Only a launch materializes the project copy; state checks stay read-only. */
+  private resolveLauncher(materialize = false): ConnectorLauncher | null {
     const direct = this.resolveDirectConnectorCli();
     if (direct) {
       this.state.uvMissing = false;
@@ -550,10 +557,13 @@ export class ConnectorSupervisor {
     }
     this.state.uvMissing = false;
     this.state.resolvedUvPath = uv;
+    const projectDir = this.options.packaged && materialize
+      ? this.projectDir ??= materializeConnectorProject(this.options.connectorDir, this.options.dataPath)
+      : this.projectDir ?? this.options.connectorDir;
     return {
       executable: uv,
-      args: ["run", "--project", this.options.connectorDir, "anywhere-cli", "rpc", "--config", this.options.configPath],
-      description: `${uv} run --project ${this.options.connectorDir}`,
+      args: ["run", "--project", projectDir, "anywhere-cli", "rpc", "--config", this.options.configPath],
+      description: `${uv} run --project ${projectDir}`,
     };
   }
 
@@ -662,10 +672,14 @@ export class ConnectorSupervisor {
     }
     // Also make the official-index choice explicit: the bundled project or
     // inherited shell environment may declare a different default index.
-    const pypiIndexUrl = this.options.settings.get().uvPypiIndexUrl || "https://pypi.org/simple";
+    const settings = this.options.settings.get();
+    const pypiIndexUrl = settings.uvPypiIndexUrl || "https://pypi.org/simple";
     environment.UV_DEFAULT_INDEX = pypiIndexUrl;
     environment.UV_INDEX_URL = pypiIndexUrl;
     environment.PIP_INDEX_URL = pypiIndexUrl;
+    // uv downloads CPython itself on first run; the default is GitHub.
+    environment.UV_PYTHON_INSTALL_MIRROR = settings.uvPythonInstallMirror || PYTHON_BUILDS_GITHUB;
+    environment.UV_HTTP_TIMEOUT ||= UV_HTTP_TIMEOUT_SECONDS;
     if (process.platform === "win32") {
       delete environment.Path;
       delete environment.path;
@@ -735,6 +749,7 @@ export class ConnectorSupervisor {
     | "notificationsEnabled"
     | "uvPath"
     | "uvPypiIndexUrl"
+    | "uvPythonInstallMirror"
     | "logChunkSizeKb"
     | "logRetainChunks"
     | "logRetentionDays"
@@ -747,6 +762,7 @@ export class ConnectorSupervisor {
       notificationsEnabled: settings.notificationsEnabled,
       uvPath: settings.uvPath,
       uvPypiIndexUrl: settings.uvPypiIndexUrl,
+      uvPythonInstallMirror: settings.uvPythonInstallMirror,
       logChunkSizeKb: settings.logChunkSizeKb,
       logRetainChunks: settings.logRetainChunks,
       logRetentionDays: settings.logRetentionDays,
