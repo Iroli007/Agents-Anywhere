@@ -98,6 +98,10 @@ struct SessionChatView: View, Equatable {
                             takeoverPill.frame(maxWidth: .infinity, alignment: .center)
                         }
                         ChatErrorToasts(store: toasts, isRetrying: session.isLoading, onRetry: { _ in await session.refresh() })
+                        if let success = model.commandSuccess {
+                            CommandSuccessToast(feedback: success) { model.commandSuccess = nil }
+                                .frame(maxWidth: .infinity, alignment: .center)
+                        }
                     }.padding(.top, 8)
                 }
         }
@@ -176,6 +180,11 @@ struct SessionChatView: View, Equatable {
         .onChange(of: model.error, initial: true) { _, message in
             toasts.update(source: "operation", failure: message.map { V2ClientFailure(kind: .rejected, message: $0) })
         }
+        .onChange(of: model.commandFailure) { _, feedback in
+            // Each command failure is new, even when its text repeats a dismissed one.
+            toasts.update(source: "command", failure: nil)
+            toasts.update(source: "command", failure: feedback.map { V2ClientFailure(kind: .rejected, message: $0.message ?? "") }, title: feedback?.title)
+        }
         .onChange(of: model.openingError, initial: true) { _, message in
             toasts.update(source: "opening", failure: message.map { V2ClientFailure(kind: .unavailable, message: $0) })
         }
@@ -240,5 +249,35 @@ struct SessionChatView: View, Equatable {
     private func cleanPreview() {
         if let directory = previewDirectory { try? FileManager.default.removeItem(at: directory) }
         previewDirectory = nil
+    }
+}
+
+/// Command success is transient, like the Web/Desktop toast; failures use the
+/// dismissible error toasts instead.
+private struct CommandSuccessToast: View {
+    let feedback: CommandFeedback
+    let onDismiss: () -> Void
+
+    var body: some View {
+        Button(action: onDismiss) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                AppSymbol("checkmark.circle", size: 14).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(feedback.title).font(.subheadline.weight(.medium))
+                    if let message = feedback.message, !message.isEmpty {
+                        Text(message).font(.footnote).foregroundStyle(.secondary).lineLimit(3)
+                    }
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 10)
+            .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, ChatControlMetrics.collapsedHorizontalInset)
+        .accessibilityHint(String(localized: "轻点关闭"))
+        .task(id: feedback.id) {
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { onDismiss() }
+        }
     }
 }
