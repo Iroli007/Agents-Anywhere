@@ -93,7 +93,6 @@ import com.agentsanywhere.app.feature.sessiondetail.failSnapshotLoad
 import com.agentsanywhere.app.feature.sessiondetail.isValidAttachmentMediaType
 import com.agentsanywhere.app.feature.sessiondetail.isInternalRuntimeError
 import com.agentsanywhere.app.feature.sessiondetail.hasPendingOptimisticSend
-import com.agentsanywhere.app.feature.sessiondetail.RuntimeMessageAction
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNotice
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNoticeAction
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNoticeResponseException
@@ -105,7 +104,6 @@ import com.agentsanywhere.app.feature.sessiondetail.SESSION_MODEL_CATALOG_CAPABI
 import com.agentsanywhere.app.feature.sessiondetail.SESSION_NOTICE_RESPONSE_CAPABILITY
 import com.agentsanywhere.app.feature.sessiondetail.SESSION_PERMISSION_CATALOG_CAPABILITY
 import com.agentsanywhere.app.feature.sessiondetail.SESSION_SEND_MESSAGE_CAPABILITY
-import com.agentsanywhere.app.feature.sessiondetail.SESSION_STEER_CAPABILITY
 import com.agentsanywhere.app.feature.sessiondetail.selectionOptions
 import com.agentsanywhere.app.feature.sessiondetail.sessionComposerEnabled
 import com.agentsanywhere.app.feature.sessiondetail.validatedSelection
@@ -192,7 +190,6 @@ fun SessionDetailScreen(
     var streamLatestRequest by remember(sessionId) { mutableStateOf(0) }
     var attachments by remember(composerDraftSessionId) { mutableStateOf(restoredComposerDraft.attachments) }
     var retryClientMessageId by remember(composerDraftSessionId) { mutableStateOf(restoredComposerDraft.clientMessageId) }
-    var retryMessageAction by remember(composerDraftSessionId) { mutableStateOf(restoredComposerDraft.retryAction) }
     var preparedSessionCreating by remember(preparedSession) { mutableStateOf(false) }
     var preparedSelections by remember(preparedSession) { mutableStateOf(preparedSession?.selections ?: NewSessionSelections()) }
     var preparedModelOptions by remember(preparedSession) { mutableStateOf(emptyList<com.agentsanywhere.app.feature.sessiondetail.RuntimeSelectionOption>()) }
@@ -414,23 +411,20 @@ fun SessionDetailScreen(
         nextDraft: String,
         nextAttachments: List<PendingAttachment>,
         clientMessageId: String? = retryClientMessageId,
-        retryAction: RuntimeMessageAction? = retryMessageAction,
     ) {
-        composerDraftStore.save(composerDraftSessionId, nextDraft, nextAttachments, clientMessageId, retryAction)
+        composerDraftStore.save(composerDraftSessionId, nextDraft, nextAttachments, clientMessageId)
     }
 
     fun setComposerDraft(nextDraft: String) {
         draft = nextDraft
         retryClientMessageId = null
-        retryMessageAction = null
-        saveComposerDraft(nextDraft, attachments, null, null)
+        saveComposerDraft(nextDraft, attachments, null)
     }
 
     fun setComposerAttachments(nextAttachments: List<PendingAttachment>) {
         attachments = nextAttachments
         retryClientMessageId = null
-        retryMessageAction = null
-        saveComposerDraft(draft, nextAttachments, null, null)
+        saveComposerDraft(draft, nextAttachments, null)
     }
 
     fun clearComposerDraft() {
@@ -438,7 +432,6 @@ fun SessionDetailScreen(
         attachments = emptyList()
         composerDraftStore.clear(composerDraftSessionId)
         retryClientMessageId = null
-        retryMessageAction = null
     }
 
     fun updateAttachment(id: String, transform: (PendingAttachment) -> PendingAttachment) {
@@ -737,7 +730,6 @@ fun SessionDetailScreen(
                     text = message,
                     clientMessageId = clientMessageId,
                     attachments = optimisticAttachments,
-                    retryAction = RuntimeMessageAction.Send,
                 )
                 clearComposerDraft()
                 when (
@@ -766,8 +758,7 @@ fun SessionDetailScreen(
                         draft = message
                         attachments = pendingAttachments
                         retryClientMessageId = clientMessageId
-                        retryMessageAction = RuntimeMessageAction.Send
-                        saveComposerDraft(message, pendingAttachments, clientMessageId, RuntimeMessageAction.Send)
+                        saveComposerDraft(message, pendingAttachments, clientMessageId)
                         val rawMessage = outcome.error.message
                         val errorMessage = rawMessage
                             ?.takeUnless(::isInternalRuntimeError)
@@ -789,29 +780,11 @@ fun SessionDetailScreen(
         val id = sessionId ?: return
         val runtimeId = state.session?.runtimeId ?: state.runtime.runtimeId
         val runtimeType = state.session?.runtimeType ?: state.runtime.runtimeType
-        val messageAction = state.capabilities.messageAction(runtimeId, state.effectiveRuntimeStatus(), runtimeType)
-        if (messageAction == null) {
-            showError(context.getString(R.string.session_steer_unavailable))
+        if (!state.capabilities.isUsable(SESSION_SEND_MESSAGE_CAPABILITY, runtimeId, runtimeType)) {
+            showError(context.getString(R.string.session_send_unavailable))
             return
         }
         val clientMessageId = retryClientMessageId ?: "opt_${UUID.randomUUID()}"
-        val requestAction = retryMessageAction ?: messageAction
-        val actionAllowed = when (requestAction) {
-            RuntimeMessageAction.Send -> state.capabilities.isUsable(
-                SESSION_SEND_MESSAGE_CAPABILITY,
-                runtimeId,
-                runtimeType,
-            )
-            RuntimeMessageAction.Steer -> state.capabilities.isUsable(
-                SESSION_STEER_CAPABILITY,
-                runtimeId,
-                runtimeType,
-            )
-        }
-        if (!actionAllowed) {
-            showError(context.getString(R.string.session_steer_unavailable))
-            return
-        }
         val pendingAttachments = attachments
         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
         scope.launch {
@@ -831,27 +804,11 @@ fun SessionDetailScreen(
                 text = text,
                 clientMessageId = clientMessageId,
                 attachments = optimisticAttachments,
-                retryAction = requestAction,
             )
             unfocusComposer()
             forceLatestRequest += 1
             state.session?.let { onSessionChanged(it.copy(optimisticTopUntil = System.currentTimeMillis() + 1_000)) }
-            val request = if (requestAction == RuntimeMessageAction.Steer) {
-                controller.steer(
-                    sessionId = id,
-                    content = text,
-                    clientMessageId = clientMessageId,
-                    uploadedAttachments = uploadedAttachments,
-                )
-            } else {
-                controller.sendMessage(
-                    sessionId = id,
-                    content = text,
-                    clientMessageId = clientMessageId,
-                    uploadedAttachments = uploadedAttachments,
-                )
-            }
-            request
+            controller.sendMessage(id, text, clientMessageId, uploadedAttachments = uploadedAttachments)
                 .onSuccess { result ->
                     clearComposerDraft()
                     state = controller.markOptimisticMessage(
@@ -872,8 +829,7 @@ fun SessionDetailScreen(
                         return@onFailure
                     }
                     retryClientMessageId = clientMessageId
-                    retryMessageAction = requestAction
-                    saveComposerDraft(text, pendingAttachments, clientMessageId, requestAction)
+                    saveComposerDraft(text, pendingAttachments, clientMessageId)
                     state = controller.markOptimisticMessage(
                         sessionId = id,
                         state = state,
@@ -1337,7 +1293,6 @@ fun SessionDetailScreen(
     val runtimeId = state.session?.runtimeId ?: state.runtime.runtimeId
     val runtimeType = state.session?.runtimeType ?: state.runtime.runtimeType
     val canUseSendMessage = state.capabilities.isUsable(SESSION_SEND_MESSAGE_CAPABILITY, runtimeId, runtimeType)
-    val canUseSteer = state.capabilities.isUsable(SESSION_STEER_CAPABILITY, runtimeId, runtimeType)
     val canUseInterrupt = state.capabilities.isUsable(SESSION_INTERRUPT_CAPABILITY, runtimeId, runtimeType)
     val canRespondToNotice = state.capabilities.isUsable(
         SESSION_NOTICE_RESPONSE_CAPABILITY,
@@ -1380,7 +1335,6 @@ fun SessionDetailScreen(
             takeoverEnabled = takeoverEnabled,
             capabilityFactsFresh = capabilityFactsFresh,
             canSendMessage = canUseSendMessage,
-            canSteer = canUseSteer,
             canUseCommands = canUseCommands,
         )
     }
@@ -1396,7 +1350,7 @@ fun SessionDetailScreen(
         (attachments.isEmpty() || canUseAttachments) &&
         (draft.isNotBlank() || attachments.isNotEmpty()) &&
         if (isPreparedSession) true
-        else if (commandMode) canUseCommands && state.commands.isLoaded else canUseSendMessage || canUseSteer
+        else if (commandMode) canUseCommands && state.commands.isLoaded else canUseSendMessage
     val modelOptions = if (isPreparedSession) preparedModelOptions else remember(state.catalogs.model) {
         state.catalogs.model?.selectionOptions().orEmpty()
     }
