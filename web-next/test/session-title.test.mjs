@@ -30,3 +30,9 @@ test("session title caps pasted documents like the server", () => {
   assert.equal(title, `${collapsed.slice(0, 48).trimEnd()}...`)
   assert.ok(title.length <= 51)
 })
+
+test("session title matches the server when the cut lands on a space", () => {
+  // The request sends the raw prompt; the server applies this same cap once.
+  const prompt = `${"a".repeat(47)} ${"b".repeat(10)}`
+  assert.equal(sessionTitleFromPrompt(prompt), `${"a".repeat(47)}...`)
+})

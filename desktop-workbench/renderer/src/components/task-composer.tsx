@@ -822,7 +822,7 @@ export function TaskComposer() {
           selectedRuntime?.runtimeType ?? selectedAgent,
           selectedRuntime?.runtimeId ?? selectedAgent,
         ),
-        title: sessionTitleFromPrompt(prompt) ?? undefined,
+        title: prompt.trim() || undefined,
         cwd: project.workspacePath,
         ...(selectedRuntime?.runtimeType === "dsh" ? {
           runtimeOptions: {
