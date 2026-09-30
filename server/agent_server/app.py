@@ -38,7 +38,6 @@ from agent_server.api import (
     sessions_fs,
     sessions_terminal,
     shares,
-    sidebar_order,
 )
 from agent_server.core.api_namespace import API_V2_PREFIX
 from agent_server.core.process_settings import ProcessSettings
@@ -64,7 +63,6 @@ from agent_server.services.device_runtimes import DeviceRuntimeService
 from agent_server.services.effective_capabilities import (
     publish_connector_session_capabilities,
 )
-from agent_server.services.session_auto_archive import SessionAutoArchiveSweeper
 from agent_server.services.session_runtime_state_cache import SessionRuntimeStateCache
 from agent_server.services.setup_tokens import SetupTokenService
 from agent_server.services.shell_tasks import ShellTaskManager
@@ -121,7 +119,6 @@ def create_app(
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         presence_task: asyncio.Task[None] | None = None
         deletion_task: asyncio.Task[None] | None = None
-        auto_archive_task: asyncio.Task[None] | None = None
         try:
             logger.info(
                 "server concurrency pid={} workers={} event_workers={}",
@@ -139,17 +136,11 @@ def create_app(
             await app.state.rpc.start()
             presence_task = asyncio.create_task(_connector_presence_watchdog(app))
             deletion_task = asyncio.create_task(app.state.connector_deletion_recovery.run())
-            auto_archive_task = asyncio.create_task(
-                app.state.session_auto_archive_sweeper.run()
-            )
             # Generate the bootstrap token early so operators see it in logs.
             if await app.state.store.count_users() == 0:
                 await SetupTokenService(app.state.setup_token, app.state.redis).snapshot()
             yield
         finally:
-            if auto_archive_task is not None:
-                auto_archive_task.cancel()
-                await asyncio.gather(auto_archive_task, return_exceptions=True)
             if deletion_task is not None:
                 deletion_task.cancel()
                 await asyncio.gather(deletion_task, return_exceptions=True)
@@ -179,7 +170,7 @@ def create_app(
                                 finally:
                                     await app.state.store.close()
 
-    app = FastAPI(title="Agent Server", version="2.0.0", lifespan=lifespan)
+    app = FastAPI(title="Agent Server", version="2.0.1", lifespan=lifespan)
     app.add_exception_handler(
         ConnectorServiceError,
         error_handlers.connector_service_error_handler,
@@ -274,9 +265,6 @@ def create_app(
         app.state.store, app.state.rpc, app.state.terminal_broker,
         app.state.timeline_write_buffer, app.state.session_runtime_state_cache, app.state.timeline_broker,
     )
-    app.state.session_auto_archive_sweeper = SessionAutoArchiveSweeper(
-        app.state.store, app.state.redis, app.state.timeline_broker,
-    )
     app.state.ws_tickets = ClientWsTicketManager(app.state.redis)
     app.state.setup_token = SetupToken()
     app.state.started_at_iso = utc_now()
@@ -366,7 +354,6 @@ def create_app(
     app.include_router(sessions.router, prefix=API_V2_PREFIX)
     app.include_router(sessions_fs.router, prefix=API_V2_PREFIX)
     app.include_router(sessions_terminal.router, prefix=API_V2_PREFIX)
-    app.include_router(sidebar_order.router, prefix=API_V2_PREFIX)
 
     static_dir = os.environ.get("AGENT_SERVER_STATIC_DIR")
     if static_dir:

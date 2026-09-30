@@ -69,7 +69,6 @@ export type SessionView = {
   archived: boolean
   archivedAt?: string | null
   userArchived?: boolean
-  autoArchived?: boolean
   sourceAvailability?: "available" | "archived" | "unavailable" | "deleted" | "missing" | "unknown"
   sourceAvailabilityReason?: string | null
   sourceAvailabilityUpdatedAt?: string | null
@@ -84,7 +83,6 @@ export type SessionView = {
   lastItemAt?: string | null
   lastItemOrderSeq?: number | null
   sortAt?: string | null
-  createdAt?: string | null
   updatedSeq: number
   effectiveRunMode?: "chat" | "terminal" | null
   runtimeSettings?: Record<string, unknown> | null
@@ -298,7 +296,7 @@ let mockInstanceSettings: InstanceSettings = {
 
 const mockServiceInfo: ServiceInfo = {
   endpoint: "https://anywhere.t4wefan.pub",
-  version: "2.0.1",
+  version: "2.0.2",
   database: "PostgreSQL",
   databasePath: "postgres:5432/agents_anywhere",
   startedAt: new Date(Date.now() - 86400000 * 7).toISOString(),

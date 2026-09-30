@@ -55,12 +55,6 @@ SessionStatus = Literal[
     "error",
     "blocked",
 ]
-# Statuses the inactivity sweeper is allowed to archive. This is deliberately an
-# allow-list rather than a deny-list: every other status carries an outstanding
-# obligation ("waiting_approval" is literally a question the user has not
-# answered), and a status added in future defaults to *not* archived, which is
-# the safe failure direction.
-ARCHIVABLE_SESSION_STATUSES: frozenset[str] = frozenset({"idle", "error"})
 TimelineType = Literal[
     "message",
     "tool",
@@ -204,30 +198,6 @@ class ProjectListResponse(BaseModel):
     serverTime: str
 
 
-SidebarOrderKind = Literal["projects", "sessions"]
-
-
-class SidebarOrderView(BaseModel):
-    """Manual sidebar order; ids not listed are shown first, newest created first."""
-
-    projects: list[str] = Field(default_factory=list)
-    sessions: list[str] = Field(default_factory=list)
-
-
-class SidebarOrderUpdateRequest(BaseModel):
-    """Replace one kind's whole order with the list as the user now sees it."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    kind: SidebarOrderKind
-    ids: list[Annotated[str, Field(min_length=1, max_length=255)]] = Field(max_length=20000)
-
-
-class SidebarOrderResponse(BaseModel):
-    sidebarOrder: SidebarOrderView
-    serverTime: str
-
-
 class ProjectDeleteResponse(BaseModel):
     projectId: str
     detachedSessions: int
@@ -299,6 +269,9 @@ class AuthConfigResponse(BaseModel):
     oauthRegistrationOpen: bool = False
     oauthEnabled: bool = False
     oauthProviderLabel: str | None = None
+    # True only when the instance enabled self-service password reset and
+    # email delivery is configured.
+    passwordResetEnabled: bool = False
     # ISO-8601 UTC, only present when needsBootstrap is true. Lets the setup
     # page show a countdown / "expired, check log" hint without ever exposing
     # the token value itself.
@@ -308,7 +281,7 @@ class AuthConfigResponse(BaseModel):
 
 class EmailCodeRequest(BaseModel):
     email: str = Field(max_length=320)
-    purpose: Literal["register", "bind"]
+    purpose: Literal["register", "bind", "reset"]
     setupToken: str | None = None
     pendingToken: str | None = None
 
@@ -334,6 +307,10 @@ class ChangePasswordRequest(BaseModel):
     newPassword: str | None = None
     newPasswordVerifier: str | None = None
     newPasswordSalt: str | None = None
+    # Unauthenticated password reset: email + code issued with purpose=reset.
+    # Ignored when the request carries a bearer token.
+    email: str | None = Field(default=None, max_length=320)
+    code: str | None = Field(default=None, max_length=6)
 
 
 class UpdateAvatarRequest(BaseModel):
@@ -361,6 +338,8 @@ class AdminUserCreateRequest(BaseModel):
     passwordVerifier: str | None = None
     passwordSalt: str | None = None
     role: UserRoleName = "member"
+    # Create this one user as already email-verified without a code.
+    skipEmailVerification: bool = False
 
 
 class AdminUserUpdateRequest(BaseModel):
@@ -374,6 +353,8 @@ class AdminUserUpdateRequest(BaseModel):
 
 class AdminUserListResponse(BaseModel):
     users: list[UserView]
+    # Total number of users, regardless of limit/offset.
+    total: int | None = None
     serverTime: str
 
 
@@ -501,6 +482,7 @@ class OAuthProviderConfigUpdate(OAuthProviderPublicConfig):
 class InstanceSettingsView(BaseModel):
     registrationOpen: bool
     oauthRegistrationOpen: bool = False
+    passwordResetEnabled: bool = False
     oauth: OAuthProviderPublicConfig | None = None
     email: EmailSettingsView = Field(default_factory=EmailSettingsView)
 
@@ -508,6 +490,7 @@ class InstanceSettingsView(BaseModel):
 class InstanceSettingsUpdateRequest(BaseModel):
     registrationOpen: bool | None = None
     oauthRegistrationOpen: bool | None = None
+    passwordResetEnabled: bool | None = None
     oauth: OAuthProviderConfigUpdate | None = None
     email: EmailSettingsUpdate | None = None
 
@@ -788,10 +771,6 @@ class SessionView(BaseModel):
     archived: bool = False
     archivedAt: str | None = None
     userArchived: bool = False
-    # True when the inactivity sweeper archived this session rather than the
-    # user. Such a session is folded away, not locked: sending it a message
-    # revives it. A user archive is never undone automatically.
-    autoArchived: bool = False
     sourceAvailability: Literal[
         "available",
         "archived",
@@ -813,9 +792,6 @@ class SessionView(BaseModel):
     lastItemAt: str | None = None
     lastItemOrderSeq: int | None = None
     sortAt: str | None = None
-    # Stable key for the sidebar: sessions the user has not placed by drag yet
-    # are listed newest created first, so they do not jump with activity.
-    createdAt: str | None = None
     updatedSeq: int
 
     @model_validator(mode="after")

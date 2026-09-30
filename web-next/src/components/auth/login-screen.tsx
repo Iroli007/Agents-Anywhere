@@ -12,7 +12,7 @@ import { PrivacyNotice } from "./privacy-notice"
 import { useTranslations } from "next-intl"
 
 export function LoginScreen() {
-  const { navigate, login, loading, error, oauthEnabled, oauthProviderLabel, registrationOpen, startOAuth } = useAuth()
+  const { navigate, login, loading, error, oauthEnabled, oauthProviderLabel, registrationOpen, passwordResetEnabled, startOAuth } = useAuth()
   const t = useTranslations("auth")
   const [showPassword, setShowPassword] = useState(false)
   const [email, setEmail] = useState("")
@@ -104,19 +104,31 @@ export function LoginScreen() {
           </Button>
         ) : null}
 
-        {registrationOpen ? (
+        {registrationOpen || passwordResetEnabled ? (
           <div className="flex flex-col items-center gap-1 text-sm text-muted-foreground">
-            <p>
-              {t("login.newHere")}{" "}
+            {registrationOpen ? (
+              <p>
+                {t("login.newHere")}{" "}
+                <button
+                  type="button"
+                  className="font-medium text-foreground underline-offset-4 hover:underline"
+                  onClick={() => navigate("register")}
+                >
+                  {t("login.createAccount")}
+                </button>
+              </p>
+            ) : null}
+            {passwordResetEnabled ? (
               <button
                 type="button"
                 className="font-medium text-foreground underline-offset-4 hover:underline"
-                onClick={() => navigate("register")}
+                onClick={() => navigate("forgot-password")}
               >
-                {t("login.createAccount")}
+                {t("login.resetPassword")}
               </button>
-            </p>
-            <p>{t("login.forgot")}</p>
+            ) : (
+              <p>{t("login.forgot")}</p>
+            )}
           </div>
         ) : null}
 

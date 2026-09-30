@@ -347,9 +347,15 @@
       "permissionMode": "权限模式",
       "permissionModes": {
         "dsh": {
-          "readOnly": { "label": "仅可查看" },
-          "workspaceWrite": { "label": "工作区内修改" },
-          "fullAccess": { "label": "完全权限" },
+          "readOnly": {
+            "label": "仅可查看"
+          },
+          "workspaceWrite": {
+            "label": "工作区内修改"
+          },
+          "fullAccess": {
+            "label": "完全权限"
+          },
           "auto": {
             "label": "Auto review"
           }
@@ -871,6 +877,7 @@
         "消息可能不会立即同步到 {agent} 客户端，通常重启它们后即可刷新同步。",
         "如果你同时在 Agents Anywhere 和 {agent} 客户端中操作此会话，可能导致意料外的结果。"
       ],
+      "takeoverEnableDshDescription": "DSH 现可实时同步 <beta>Beta</beta> Agents Anywhere。启用接管即可发送消息。",
       "takeoverDisableTitle": "关闭接管？",
       "takeoverDisableDescription": [
         "关闭后会话将回到只读模式，无法继续发送消息。",
@@ -922,6 +929,7 @@
       "reasoningSummary": "推理过程 · {count} 条摘要",
       "conversationCompacting": "正在压缩上下文",
       "conversationCompacted": "对话已压缩",
+      "conversationCompactionFailed": "上下文压缩未完成",
       "loadOlder": "加载更早消息",
       "expandMessage": "展开",
       "collapseMessage": "收起",
@@ -974,6 +982,27 @@
       "commandNoMatches": "没有匹配的指令",
       "commandLoading": "正在读取指令…",
       "commandFailed": "无法执行指令。",
+      "commandUnavailable": "此会话暂时无法使用指令。",
+      "commandCatalogError": "无法读取指令，请重新打开菜单重试。",
+      "commandUnknown": "未知指令，请从菜单中选择。",
+      "commandAttachments": "运行指令前请移除附件；草稿会保留。",
+      "commandMultiline": "此指令不支持多行输入。",
+      "commandInvalidArgs": "此指令不接受这些参数。",
+      "commandAccepted": "指令已接受，后台任务可能仍在进行。",
+      "commandCompleted": "指令已完成。",
+      "commandUnknownOutcome": "结果尚不确定，请先检查会话状态再决定是否重试。",
+      "commandReason_session_unloaded": "请先打开此会话，再运行指令。",
+      "commandReason_native_commands_unavailable": "此 Codex 版本尚不支持所需的指令操作。",
+      "commandReason_codex_unavailable": "Codex 当前不可用。",
+      "commandDetails": "查看详情",
+      "commandLess": "收起",
+      "commandMenu": "指令",
+      "commandDismiss": "关闭",
+      "commandBlocked_busy": "Agent 忙碌中，暂时不能执行",
+      "commandBlocked_readOnly": "开启接管后才能执行指令",
+      "commandBlocked_offline": "设备离线",
+      "commandBlocked_unavailable": "此会话暂时无法使用指令",
+      "commandUnsupported": "当前 Runtime 版本还不支持指令，升级后可用",
       "approvalPending": "{count} 个确认请求待处理",
       "approvalPendingPlural": "{count} 个确认请求待处理",
       "interactionPending": "{count} 个交互待处理",
@@ -1271,7 +1300,8 @@
       "invalidEmail": "请输入邮箱",
       "userPlaceholder": "name@example.com",
       "signingIn": "正在登录...",
-      "submitWithEnter": "登录 ↵"
+      "submitWithEnter": "登录 ↵",
+      "resetPassword": "忘记密码？"
     },
     "signedOut": {
       "description": "你的本地登录凭据已经清除。可以安全关闭这个页面，或重新打开登录页面继续使用。",
@@ -1365,6 +1395,17 @@
       "retry": "{seconds} 秒后重发",
       "sent": "验证码已发送，请查看邮箱。",
       "failed": "验证码发送失败。"
+    },
+    "forgotPassword": {
+      "title": "重置密码",
+      "description": "输入账号邮箱，我们会发送验证码，验证后即可设置新密码。",
+      "done": "密码已重置，请使用新密码登录。",
+      "signIn": "去登录",
+      "backToLogin": "返回登录",
+      "newPassword": "新密码",
+      "submit": "重置密码",
+      "submitting": "正在重置...",
+      "failed": "无法重置密码。"
     }
   },
   "pages": {
@@ -1390,7 +1431,6 @@
       "archivedRetry": "重试",
       "archivedUntitled": "未命名会话",
       "archivedTimeUnavailable": "时间未知",
-      "archivedAutoBadge": "自动归档",
       "archivedUnarchive": "取消归档",
       "archivedUnarchiveAll": "全部取消归档",
       "archivedUnarchiveSuccess": "会话已取消归档",
@@ -1574,7 +1614,13 @@
       "emailDescription": "用户将使用此邮箱登录。",
       "invalidEmail": "请输入有效邮箱。",
       "invalidDisplayName": "昵称需要 1–64 个字符。",
-      "typeEmail": "输入账号邮箱以确认"
+      "typeEmail": "输入账号邮箱以确认",
+      "skipEmailVerification": "无需邮箱验证",
+      "skipEmailVerificationDescription": "仅对这个用户生效。不需要验证码，邮箱会被视为已验证。",
+      "previousPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "{page} / {pages}",
+      "pageRange": "第 {from}-{to} 位，共 {total} 位"
     },
     "opsDashboard": {
       "title": "看板",
@@ -1710,7 +1756,10 @@
         "save": "保存邮箱设置",
         "saved": "邮箱设置已保存。",
         "failed": "邮箱设置保存失败。"
-      }
+      },
+      "passwordReset": "找回密码",
+      "passwordResetDescription": "允许用户通过邮箱验证码重置忘记的密码。",
+      "passwordResetNeedsEmail": "需要先开启邮件服务，找回密码会通过邮件发送验证码。"
     }
   },
   "preview": {

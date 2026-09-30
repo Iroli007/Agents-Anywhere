@@ -275,6 +275,7 @@
       "expand": "Expand sidebar",
       "markAllRead": "Mark all read",
       "filter": "Filter recents",
+      "showMoreSessions": "Show {count} more",
       "mobileConnections": "Mobile connection",
       "newSession": "New session",
       "open": "Open",
@@ -895,6 +896,7 @@
         "Messages may not sync to the {agent} client immediately. Restarting it usually refreshes the sync.",
         "If you operate this session in both Agents Anywhere and the {agent} client at the same time, unexpected results may occur."
       ],
+      "takeoverEnableDshDescription": "DSH now syncs in real time <beta>Beta</beta> with Agents Anywhere. Enable Takeover to send messages.",
       "takeoverDisableTitle": "Disable Takeover?",
       "takeoverDisableDescription": [
         "After disabling Takeover, the session returns to read-only mode and you cannot send more messages.",
@@ -986,6 +988,7 @@
       "reasoningSummary": "Reasoning · {count} notes",
       "conversationCompacting": "Compacting context",
       "conversationCompacted": "Conversation compacted",
+      "conversationCompactionFailed": "Context compaction did not complete",
       "loadOlder": "Load earlier messages",
       "expandMessage": "Show more",
       "collapseMessage": "Show less",
@@ -1034,6 +1037,27 @@
       "commandNoMatches": "No matching commands",
       "commandLoading": "Loading commands...",
       "commandFailed": "Failed to run command.",
+      "commandUnavailable": "Commands are unavailable for this session.",
+      "commandCatalogError": "Could not load commands. Try opening the menu again.",
+      "commandUnknown": "Unknown command. Choose one from the menu.",
+      "commandAttachments": "Remove attachments before running a command; your draft is preserved.",
+      "commandMultiline": "This command does not accept multiple lines.",
+      "commandInvalidArgs": "This command does not accept these arguments.",
+      "commandAccepted": "Command accepted; background work may still be running.",
+      "commandCompleted": "Command completed.",
+      "commandUnknownOutcome": "The result is unknown. Check the session before trying again.",
+      "commandReason_session_unloaded": "Open this session before running the command.",
+      "commandReason_native_commands_unavailable": "This Codex version does not expose the required command controls.",
+      "commandReason_codex_unavailable": "Codex is currently unavailable.",
+      "commandDetails": "Details",
+      "commandLess": "Show less",
+      "commandMenu": "Commands",
+      "commandDismiss": "Dismiss",
+      "commandBlocked_busy": "Not available while the agent is busy",
+      "commandBlocked_readOnly": "Turn on takeover to run commands",
+      "commandBlocked_offline": "The device is offline",
+      "commandBlocked_unavailable": "Commands are unavailable for this session",
+      "commandUnsupported": "This runtime version does not support commands yet. Upgrade it to use them.",
       "approvalPending": "{count} approval request pending",
       "approvalPendingPlural": "{count} approval requests pending",
       "interactionPending": "{count} interaction pending",
@@ -1651,7 +1675,7 @@
     "team": {
       "title": "Team",
       "description": "Manage who can sign in to this instance and what they can do.",
-      "searchPlaceholder": "Search by user id",
+      "searchPlaceholder": "Search by nickname or email",
       "newUser": "New user",
       "newUserDescription": "Create a local account for this instance.",
       "all": "All",
@@ -1711,7 +1735,16 @@
       "daysAgo": "{count}d ago",
       "weeksAgo": "{count}w ago",
       "email": "Email",
-      "emailDescription": "This address is used to sign in."
+      "emailDescription": "This address is used to sign in.",
+      "invalidEmail": "Enter a valid email address.",
+      "invalidDisplayName": "Nickname must be 1–64 characters.",
+      "typeEmail": "Type the account email to confirm",
+      "skipEmailVerification": "Skip email verification",
+      "skipEmailVerificationDescription": "Only for this user. No code is needed and the email is treated as verified.",
+      "previousPage": "Previous",
+      "nextPage": "Next",
+      "pageOf": "{page} / {pages}",
+      "pageRange": "{from}-{to} of {total}"
     },
     "opsDashboard": {
       "title": "Dashboard",
@@ -1847,7 +1880,10 @@
         "save": "Save email settings",
         "saved": "Email settings saved.",
         "failed": "Failed to save email settings."
-      }
+      },
+      "passwordReset": "Password reset",
+      "passwordResetDescription": "Let users reset a forgotten password with an email verification code.",
+      "passwordResetNeedsEmail": "Turn on email first. Password reset sends a verification code by email."
     }
   },
   "preview": {

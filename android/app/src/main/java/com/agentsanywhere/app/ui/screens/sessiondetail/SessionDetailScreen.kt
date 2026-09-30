@@ -33,6 +33,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.InlineTextContent
+import androidx.compose.foundation.text.appendInlineContent
 import androidx.compose.material3.SnackbarDuration
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
@@ -62,6 +64,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.Placeholder
+import androidx.compose.ui.text.PlaceholderVerticalAlign
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1730,6 +1735,7 @@ fun SessionDetailScreen(
         TakeoverConfirmDialog(
             enabled = enabled,
             busy = state.takeoverInFlight,
+            isDsh = (state.session?.runtimeType ?: state.runtime.runtimeType) == "dsh",
             agentLabel = state.session?.runtimeLabel?.takeIf { it.isNotBlank() }
                 ?: stringResource(R.string.session_agent_fallback).lowercase(),
             onDismiss = { if (!state.takeoverInFlight) takeoverConfirm = null },
@@ -2005,10 +2011,14 @@ private fun DeviceOfflineDialog(
     }
 }
 
+private const val BETA_BADGE_ID = "beta"
+private const val BETA_BADGE_MARKER = "\uFFFC"
+
 @Composable
 private fun TakeoverConfirmDialog(
     enabled: Boolean,
     busy: Boolean,
+    isDsh: Boolean,
     agentLabel: String,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit,
@@ -2016,11 +2026,47 @@ private fun TakeoverConfirmDialog(
     val colors = LocalAAColors.current
     val shape = RoundedCornerShape(26.dp)
     val secondaryButton = colors.subtle
-    val message = if (enabled) {
-        stringResource(R.string.session_enable_takeover_body, agentLabel)
-    } else {
-        stringResource(R.string.session_disable_takeover_body, agentLabel)
+    // DSH syncs with Agents Anywhere in real time, so the restart-to-sync caveats do not apply.
+    val message = when {
+        isDsh && enabled -> {
+            val parts = stringResource(R.string.session_enable_takeover_dsh_body, BETA_BADGE_MARKER)
+                .split(BETA_BADGE_MARKER, limit = 2)
+            buildAnnotatedString {
+                append(parts.first())
+                if (parts.size > 1) {
+                    appendInlineContent(BETA_BADGE_ID, "Beta")
+                    append(parts[1])
+                }
+            }
+        }
+        isDsh -> AnnotatedString(stringResource(R.string.session_disable_takeover_dsh_body))
+        enabled -> AnnotatedString(stringResource(R.string.session_enable_takeover_body, agentLabel))
+        else -> AnnotatedString(stringResource(R.string.session_disable_takeover_body, agentLabel))
     }
+    val betaLabel = stringResource(R.string.session_beta_badge)
+    val inlineContent = mapOf(
+        BETA_BADGE_ID to InlineTextContent(
+            Placeholder(width = 44.sp, height = 20.sp, placeholderVerticalAlign = PlaceholderVerticalAlign.Center),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 3.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(colors.subtle)
+                    .border(1.dp, colors.border, RoundedCornerShape(50)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = betaLabel,
+                    color = colors.ink,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    lineHeight = 13.sp,
+                )
+            }
+        },
+    )
 
     Dialog(
         onDismissRequest = { if (!busy) onDismiss() },
@@ -2054,6 +2100,7 @@ private fun TakeoverConfirmDialog(
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Medium,
                 lineHeight = 21.sp,
+                inlineContent = inlineContent,
             )
             Row(
                 modifier = Modifier

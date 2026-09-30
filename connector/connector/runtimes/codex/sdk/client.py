@@ -44,6 +44,11 @@ from connector.runtimes.codex.sdk.binary import (
     codex_runtime_environment,
     select_codex_runtime_binary,
 )
+from connector.runtimes.codex.sdk.command_notifications import (
+    CommandNotifications,
+    LowLevelTurnHandle,
+    turn_identity,
+)
 from connector.runtimes.codex.sdk.events import CodexSdkEvent
 from connector.runtimes.codex.sdk.model_gateway import (
     CODEX_MODEL_GATEWAY_PROVIDER_ID,
@@ -161,8 +166,14 @@ class CodexSdkClient:
         self._stream_tasks: dict[str, asyncio.Task[None]] = {}
         self._stream_states: dict[str, TurnStreamState] = {}
         self._global_notification_task: asyncio.Task[None] | None = None
+        self._command_notifications = CommandNotifications.for_client(client)
+        self._generation = 0
+        self._resume_locks: dict[str, asyncio.Lock] = {}
+        self._announced_turns: set[tuple[str, str]] = set()
+        self._stopping = False
 
     async def start(self, handler: NotificationHandler) -> None:
+        self._stopping = False
         self._handler = handler
         self._loop = asyncio.get_running_loop()
         await self.start_native_client(self._client)
@@ -170,7 +181,13 @@ class CodexSdkClient:
         self.start_global_notification_task()
 
     async def start_native_client(self, client: Any) -> None:
-        if install_deferred_server_request_reader(client):
+        # Command notifications are routed through the SDK router of this
+        # exact client, so a recovered transport needs a fresh router binding.
+        self._command_notifications = CommandNotifications.for_client(client)
+        observer = (
+            self._command_notifications.route if self._command_notifications else None
+        )
+        if install_deferred_server_request_reader(client, observer):
             logger.debug("codex sdk deferred server request reader installed")
         install_codex_approval_handler(client, self.handle_sdk_approval_request)
         start = getattr(client, "start", None)
@@ -181,10 +198,33 @@ class CodexSdkClient:
 
     async def stop(self) -> None:
         self._started = False
-        await self.cancel_background_tasks()
-        await self.stop_native_client(self._client)
+        await self.finish_terminal_streams()
+        # Nothing may reach the runtime once shutdown starts closing the
+        # transport; streams woken by the close must not emit synthetic failures.
+        self._stopping = True
+        self._clear_native_ownership()
+        await self.cancel_background_tasks(close_client=self._client)
 
-    async def cancel_background_tasks(self, *, transport_failed: bool = False) -> None:
+    async def finish_terminal_streams(self) -> None:
+        """Let turns already delivering a terminal finish on the live transport.
+
+        Such a stream is parked on its delivery, outside the SDK read, so it can
+        be cancelled without orphaning the SDK worker behind its queue.
+        """
+        for stream in tuple(self._stream_states.values()):
+            if stream.terminal_delivery is None:
+                continue
+            task = self._stream_tasks.get(stream.turn_id)
+            if task is not None:
+                task.cancel()
+            await self._finish_terminal_delivery(stream)
+
+    async def cancel_background_tasks(
+        self,
+        *,
+        transport_failed: bool = False,
+        close_client: Any | None = None,
+    ) -> None:
         interrupted_streams = tuple(self._stream_states.values())
         self.cancel_pending_approval_responses()
         if self._global_notification_task is not None:
@@ -194,10 +234,17 @@ class CodexSdkClient:
                 return_exceptions=True,
             )
             self._global_notification_task = None
-        for task in self._stream_tasks.values():
-            task.cancel()
-        if self._stream_tasks:
-            await asyncio.gather(*self._stream_tasks.values(), return_exceptions=True)
+        stream_tasks = tuple(self._stream_tasks.values())
+        try:
+            # Closing the transport wakes SDK workers before a cancelled stream
+            # can unregister their queues. asyncio cancellation alone cannot
+            # stop the older SDK's blocking queue.get worker.
+            if close_client is not None:
+                await self.stop_native_client(close_client)
+        finally:
+            for task in stream_tasks:
+                task.cancel()
+            await asyncio.gather(*stream_tasks, return_exceptions=True)
             self._stream_tasks.clear()
         for stream in interrupted_streams:
             if stream.terminal_delivery is None and transport_failed:
@@ -220,9 +267,7 @@ class CodexSdkClient:
                 )
             await self._finish_terminal_delivery(stream)
         self._stream_states.clear()
-        self._threads.clear()
-        self._loaded_thread_ids.clear()
-        self._turns.clear()
+        self._clear_native_ownership()
 
     async def stop_native_client(self, client: Any) -> None:
         stop = getattr(client, "stop", None)
@@ -305,6 +350,10 @@ class CodexSdkClient:
         """
 
         next_notification = getattr(self._client, "next_notification", None)
+        if not callable(next_notification):
+            next_notification = getattr(
+                getattr(self._client, "_client", None), "next_notification", None
+            )
         if not callable(next_notification) or self._handler is None:
             return
         if self._global_notification_task is not None:
@@ -324,7 +373,17 @@ class CodexSdkClient:
         except asyncio.CancelledError:
             logger.debug("codex sdk global notification task cancelled")
         except Exception:  # noqa: BLE001
+            self._clear_native_ownership()
             logger.exception("codex sdk global notification task failed")
+
+    def _clear_native_ownership(self) -> None:
+        self._generation += 1
+        self._loaded_thread_ids.clear()
+        self._threads.clear()
+        self._turns.clear()
+        self._announced_turns.clear()
+        if self._command_notifications:
+            self._command_notifications.clear()
 
     async def stream_global_notifications(self, next_notification: Any) -> None:
         while True:
@@ -464,10 +523,13 @@ class CodexSdkClient:
         await ensure_codex_initialized(self._client)
         low_level_client = codex_low_level_client(self._client)
         if low_level_client is not None:
+            generation = self._generation
             started = await low_level_client.thread_start(
                 codex_thread_start_params(request, self._model_gateway)
             )
             thread_id = id_of(started.thread)
+            if generation != self._generation:
+                raise RuntimeError("Codex disconnected while starting the thread")
             thread = codex_async_thread(self._sdk, self._client, thread_id)
             if thread is not None:
                 self._remember_thread(thread)
@@ -510,11 +572,19 @@ class CodexSdkClient:
         low_level_client = codex_low_level_client(self._client)
         if low_level_client is not None:
             await self.ensure_thread_resumed_for_turn(low_level_client, request)
-            started = await self.start_low_level_turn_with_resume_retry(
-                low_level_client,
-                request,
-            )
-            turn_id = id_of(started.turn)
+            # Recovery may swap the router mid-call; finish on the one we began.
+            notifications = self._command_notifications
+            if notifications:
+                notifications.begin_turn(request.thread_id)
+            turn_id = None
+            try:
+                started = await self.start_low_level_turn_with_resume_retry(
+                    low_level_client, request
+                )
+                turn_id = id_of(started.turn)
+            finally:
+                if notifications:
+                    notifications.finish_turn(request.thread_id, turn_id)
             turn = codex_async_turn_handle(
                 self._sdk,
                 self._client,
@@ -588,6 +658,10 @@ class CodexSdkClient:
 
     async def compact_thread(self, thread_id: str) -> CodexCompactResult:
         await ensure_codex_initialized(self._client)
+        # compact() only acknowledges scheduling; its turn has no SDK stream.
+        # Observe before resume/start so even notifications preceding the ACK
+        # reach the timeline instead of an unconsumed SDK turn queue.
+        self._observe_command_thread(thread_id)
         low_level_client = codex_low_level_client(self._client)
         if low_level_client is not None:
             await self.ensure_thread_resumed(
@@ -611,11 +685,19 @@ class CodexSdkClient:
         - caches an AsyncThread handle for later thread-scoped operations
         """
 
+        lock = self._resume_locks.setdefault(request.thread_id, asyncio.Lock())
+        async with lock:
+            await self._resume_thread(low_level_client, request)
+
+    async def _resume_thread(
+        self, low_level_client: Any, request: CodexResumeThreadRequest
+    ) -> None:
         if request.thread_id in self._loaded_thread_ids:
             return
         thread_resume = getattr(low_level_client, "thread_resume", None)
         if not callable(thread_resume):
             return
+        generation = self._generation
         try:
             resumed = await thread_resume(
                 request.thread_id,
@@ -630,11 +712,26 @@ class CodexSdkClient:
                 ) from exc
             raise
         thread_id = id_of(resumed.thread)
+        if generation != self._generation or thread_id != request.thread_id:
+            raise RuntimeError("Codex thread resume identity or connection changed")
         thread = codex_async_thread(self._sdk, self._client, thread_id)
         if thread is not None:
             self._remember_thread(thread)
         if thread_id is not None:
             self._loaded_thread_ids.add(thread_id)
+
+    def _observe_command_thread(self, thread_id: str) -> None:
+        if self._command_notifications:
+            ordinary = tuple(
+                turn_id
+                for turn_id in self._stream_tasks
+                if (turn := self._turns.get(turn_id)) is not None
+                and (
+                    getattr(turn, "thread_id", None) == thread_id
+                    or self._turns.get(thread_id) is turn
+                )
+            )
+            self._command_notifications.enable(thread_id, ordinary)
 
     async def ensure_thread_resumed_for_turn(
         self,
@@ -911,8 +1008,13 @@ class CodexSdkClient:
         self._turns[thread_id] = turn
 
     def _turn_handle(self, thread_id: str, turn_id: str | None) -> Any:
-        if turn_id is not None and turn_id in self._turns:
-            return self._turns[turn_id]
+        if turn_id is not None:
+            turn = self._turns.get(turn_id)
+            if turn is None or getattr(turn, "thread_id", thread_id) != thread_id:
+                raise RuntimeInvalidRequestError(
+                    f"Codex SDK has no active turn {turn_id} for thread {thread_id}"
+                )
+            return turn
         turn = self._turns.get(thread_id)
         if turn is None:
             raise RuntimeInvalidRequestError(
@@ -1044,6 +1146,31 @@ class CodexSdkClient:
             raise asyncio.CancelledError
 
     async def _emit(self, message: CodexNotificationMessage) -> None:
+        if self._stopping:
+            return
+        method, thread_id, turn_id = turn_identity(message)
+        if thread_id and turn_id:
+            if method == "turn/started":
+                key = (thread_id, turn_id)
+                if key in self._announced_turns:
+                    return
+                self._announced_turns.add(key)
+                if turn_id not in self._turns:
+                    turn = codex_async_turn_handle(
+                        self._sdk, self._client, thread_id, turn_id
+                    )
+                    if turn is not None:
+                        self._remember_turn(thread_id, turn)
+            elif method in {
+                "turn/completed",
+                "turn/failed",
+                "turn/interrupted",
+                "turn/cancelled",
+            }:
+                self._announced_turns.discard((thread_id, turn_id))
+                turn = self._turns.pop(turn_id, None)
+                if turn is not None and self._turns.get(thread_id) is turn:
+                    self._turns.pop(thread_id, None)
         if self._handler is not None:
             await self._handler(message)
 
@@ -1474,6 +1601,18 @@ def codex_async_turn_handle(
 ) -> Any | None:
     if turn_id is None:
         return None
+    low_level = getattr(client, "_client", None)
+    if all(
+        callable(getattr(low_level, method, None))
+        for method in (
+            "turn_interrupt",
+            "turn_steer",
+            "register_turn_notifications",
+            "next_turn_notification",
+            "unregister_turn_notifications",
+        )
+    ):
+        return LowLevelTurnHandle(low_level, thread_id, turn_id)
     async_turn_handle = (
         getattr(sdk, "AsyncTurnHandle", None) if sdk is not None else None
     )

@@ -52,18 +52,6 @@ class ConnectorDeletionRepository(DashboardEventRepository, Protocol):
     async def delete_connector(self, connector_id: str, *, user_id: str) -> list[str]: ...
 
 
-class SessionAutoArchiveRepository(DashboardEventRepository, Protocol):
-    """Batched inactivity sweep. Both calls return (session_id, user_id)."""
-
-    async def auto_archive_inactive_sessions(
-        self, *, cutoff: str, limit: int
-    ) -> list[tuple[str, str]]: ...
-
-    async def auto_unarchive_active_sessions(
-        self, *, cutoff: str, limit: int
-    ) -> list[tuple[str, str]]: ...
-
-
 class ProjectLookupRepository(Protocol):
     async def get_project(
         self,
@@ -508,8 +496,6 @@ class SessionRunRepository(
     ProjectLookupRepository,
     Protocol,
 ):
-    async def clear_auto_archive(self, session_id: str) -> bool: ...
-
     async def get_protocol_capabilities(
         self,
         connector_id: str,
