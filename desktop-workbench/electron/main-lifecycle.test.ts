@@ -121,12 +121,11 @@ test("Windows close hides the window without confirming quit, and reopening rest
     overrideBrowserWindowOptions: { webPreferences: { preload: string; contextIsolation: boolean; nodeIntegration: boolean; sandbox: boolean } };
   };
   assert.equal(previewOptions.action, "allow");
-  assert.deepEqual(previewOptions.overrideBrowserWindowOptions.webPreferences, {
-    preload: path.join(__dirname, "preload.js"),
-    contextIsolation: true,
-    nodeIntegration: false,
-    sandbox: false,
-  });
+  const previewPreferences = previewOptions.overrideBrowserWindowOptions.webPreferences;
+  assert.equal(previewPreferences.preload, path.join(__dirname, "preload.js"));
+  assert.equal(previewPreferences.contextIsolation, true);
+  assert.equal(previewPreferences.nodeIntegration, false);
+  assert.equal(previewPreferences.sandbox, false);
   assert.equal((window.openHandler!({ url: "https://example.com/" }) as { action: string }).action, "deny");
   assert.deepEqual(calls, ["external:https://example.com/"]);
   calls.length = 0;
