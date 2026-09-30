@@ -59,12 +59,21 @@ async function macProcesses(): Promise<DesktopProcessCandidate[]> {
 
 async function windowsProcesses(target: DesktopProcessTarget): Promise<DesktopProcessCandidate[]> {
   const name = basename(target.executablePath.replaceAll('\\', '/')).replaceAll("'", "''")
-  const script = `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); @(Get-CimInstance Win32_Process -Filter "Name = '${name}'" | Select-Object ExecutablePath,CommandLine) | ConvertTo-Json -Compress`
+  // A denied or unavailable CIM query also prints nothing; Stop makes it exit non-zero
+  // instead, so an empty result can only mean that no process matched. The encoding line stays non-fatal.
+  const script = `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $ErrorActionPreference = 'Stop'; @(Get-CimInstance Win32_Process -Filter "Name = '${name}'" | Select-Object ExecutablePath,CommandLine) | ConvertTo-Json -Compress`
   const encoded = Buffer.from(script, 'utf16le').toString('base64')
   const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
     timeout: 5_000, windowsHide: true, maxBuffer: 2 * 1024 * 1024,
   })
-  const result: unknown = JSON.parse(stdout.replace(/^\uFEFF/, '').trim())
+  return parseWindowsProcesses(stdout)
+}
+
+/** ConvertTo-Json receives no input when no process matches and prints nothing, not `[]`. */
+export function parseWindowsProcesses(stdout: string): DesktopProcessCandidate[] {
+  const output = stdout.replace(/^\uFEFF/, '').trim()
+  if (!output) return []
+  const result: unknown = JSON.parse(output)
   const entries = Array.isArray(result) ? result : result ? [result] : []
   return entries.flatMap((entry: unknown) => {
     if (!entry || typeof entry !== 'object') return []
