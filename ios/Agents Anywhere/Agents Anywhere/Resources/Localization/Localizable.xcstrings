@@ -2220,23 +2220,6 @@
         }
       }
     },
-    "Device content": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Device content"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "设备内容"
-          }
-        }
-      }
-    },
     "Device disconnected. Your changes are kept until it reconnects.": {
       "extractionState": "manual",
       "localizations": {
@@ -4633,24 +4616,6 @@
         }
       }
     },
-    "Session actions": {
-      "comment": "Shared with Web: dashboard.actions.sessionOptions. Sync with ios/scripts/web_copy.py.",
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Session options"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "会话选项"
-          }
-        }
-      }
-    },
     "Session filter": {
       "extractionState": "manual",
       "localizations": {
@@ -4717,6 +4682,42 @@
           "stringUnit": {
             "state": "translated",
             "value": "设置"
+          }
+        }
+      }
+    },
+    "Show all %lld more": {
+      "comment": "Shared with Web: dashboard.device.showAllMore. Sync with ios/scripts/web_copy.py.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show all %lld more"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "显示全部，另有 %lld 个"
+          }
+        }
+      }
+    },
+    "Show less": {
+      "comment": "Shared with Web: dashboard.device.showLess. Sync with ios/scripts/web_copy.py.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Show less"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "收起"
           }
         }
       }
@@ -6216,23 +6217,6 @@
         }
       }
     },
-    "Workspace actions": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Workspace actions"
-          }
-        },
-        "zh-Hans": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "工作目录操作"
-          }
-        }
-      }
-    },
     "You are not signed in.": {
       "extractionState": "manual",
       "localizations": {
@@ -6806,6 +6790,24 @@
         }
       }
     },
+    "dashboard.device.runtimeNotStarted": {
+      "comment": "Shared with Web: dashboard.device.runtimeNotStarted. Sync with ios/scripts/web_copy.py.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Not started"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "未启动"
+          }
+        }
+      }
+    },
     "dashboard.device.runtimeStatus.available": {
       "comment": "Shared with Web: dashboard.device.runtimeStatus.available. Sync with ios/scripts/web_copy.py.",
       "extractionState": "manual",
@@ -7071,7 +7073,7 @@
         "zh-Hans": {
           "stringUnit": {
             "state": "translated",
-            "value": "替我审批"
+            "value": "Auto review"
           }
         }
       }
@@ -7288,6 +7290,24 @@
           "stringUnit": {
             "state": "translated",
             "value": "计划模式"
+          }
+        }
+      }
+    },
+    "dashboard.new.permissionModes.dsh.auto.label": {
+      "comment": "Shared with Web: dashboard.new.permissionModes.dsh.auto.label. Sync with ios/scripts/web_copy.py.",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto review"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Auto review"
           }
         }
       }
@@ -15028,7 +15048,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "danger-full-access"
+            "value": "Full access"
           }
         },
         "zh-Hans": {
@@ -15046,7 +15066,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "read-only"
+            "value": "Read Only"
           }
         },
         "zh-Hans": {
@@ -15064,7 +15084,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "workspace-write"
+            "value": "Workspace Write"
           }
         },
         "zh-Hans": {
