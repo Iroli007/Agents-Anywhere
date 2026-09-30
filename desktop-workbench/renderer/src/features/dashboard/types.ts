@@ -146,6 +146,7 @@ export type SessionView = {
   pinned: boolean;
   pinnedAt: string | null;
   archived: boolean;
+  autoArchived?: boolean;
   archivedAt: string | null;
   userArchived?: boolean;
   sourceAvailability?: "available" | "archived" | "unavailable" | "deleted" | "missing" | "unknown";
