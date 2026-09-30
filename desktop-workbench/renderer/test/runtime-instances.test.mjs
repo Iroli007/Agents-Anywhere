@@ -96,16 +96,16 @@ test("an unconfigured compatibility instance is offered as addable without displ
   assert.deepEqual(addableRuntimeTypes([runtimeType], [legacyRuntime]), [runtimeType])
 })
 
-test("configured instances and addable types are mutually scoped", () => {
+test("configured instances do not hide addable runtime types", () => {
   const configured = { ...legacyRuntime, configured: true, config: {} }
   const [runtimeType] = mergeRuntimeTypes([], [configured])
 
   assert.deepEqual(configuredRuntimeInstances([configured]), [configured])
-  assert.equal(runtimeTypeCanCreateInstance(runtimeType, [configured]), false)
-  assert.deepEqual(addableRuntimeTypes([runtimeType], [configured]), [])
+  assert.equal(runtimeTypeCanCreateInstance(runtimeType, [configured]), true)
+  assert.deepEqual(addableRuntimeTypes([runtimeType], [configured]), [runtimeType])
 })
 
-test("instance availability follows the runtime descriptor policy", () => {
+test("running instance limits do not prevent saving another configuration", () => {
   const [baseType] = mergeRuntimeTypes([], [legacyRuntime])
   const singleType = {
     ...baseType,
@@ -123,7 +123,13 @@ test("instance availability follows the runtime descriptor policy", () => {
   }
 
   assert.equal(runtimeTypeCanCreateInstance(singleType, []), true)
-  assert.equal(runtimeTypeCanCreateInstance(singleType, [configured]), false)
+  assert.equal(runtimeTypeCanCreateInstance(singleType, [configured]), true)
+  const running = { ...configured, active: true, status: "running" }
+  assert.equal(runtimeTypeCanCreateInstance(singleType, [running]), true)
+  const multipleType = { ...singleType, instancePolicy: "multiple", maxInstances: 2 }
+  assert.equal(runtimeTypeCanCreateInstance(multipleType, [running, running]), true)
+  assert.equal(runtimeTypeCanCreateInstance({ ...singleType, present: false }, []), false)
+  assert.equal(runtimeTypeCanCreateInstance({ ...singleType, schema: null }, []), false)
 })
 
 test("creation defaults and required fields come only from the descriptor", () => {

@@ -159,7 +159,7 @@ jobs:
         run: uv sync --project connector
       - name: Test Connector
         working-directory: connector
-        run: uv run --frozen pytest -q
+        run: uv run --frozen pytest -q -o faulthandler_timeout=60
 
   server:
     name: Server integration
@@ -193,6 +193,7 @@ jobs:
           tests/test_static_path_safety.py
           tests/test_session_refresh_lock.py
           tests/test_session_inventory.py
+          tests/test_session_commands_contract.py
           tests/test_connector_deletion.py
           tests/test_runtime_deletion.py
           tests/test_runtime_config.py
