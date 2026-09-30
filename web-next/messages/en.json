@@ -1268,6 +1268,7 @@
       "passwordPlaceholder": "••••••••",
       "submit": "Sign in",
       "titlePrefix": "Sign in to",
+      "invalidEmail": "Enter an email address.",
       "userPlaceholder": "name@example.com",
       "signingIn": "Signing in...",
       "submitWithEnter": "Sign in ↵"
