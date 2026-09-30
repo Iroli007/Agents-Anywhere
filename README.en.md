@@ -33,7 +33,7 @@ Install the desktop client on your work machine, then access it from your phone,
 | --- | --- |
 | **macOS** | [Universal DMG · 2.0.3](https://modelscope.cn/models/t4wefan/deepseek-harness-desktop/resolve/master/Agents%20Anywhere-2.0.3-universal.dmg) |
 | **Windows** | [x64 installer · 2.0.3](https://modelscope.cn/models/t4wefan/deepseek-harness-desktop/resolve/master/Agents%20Anywhere%20Setup%202.0.3.exe) |
-| **iOS / iPadOS** | [Download on the App Store](https://apps.apple.com/cn/app/agents-anywhere/id6787125178) |
+| **iOS / iPadOS** | [Download on the App Store](https://apps.apple.com/cn/app/agents-anywhere/id6787125178) · [Join TestFlight](https://testflight.apple.com/join/GKGaut99) |
 | **Android** | [APK · 2.0.3](https://modelscope.cn/models/t4wefan/deepseek-harness-desktop/resolve/master/agents-anywhere-2.0.3-release.apk) |
 | **Web** | [Open Web](https://web.agents-anywhere.com) |
 | **Linux / headless** | [Run the Connector CLI](connector/README.md) |
@@ -46,7 +46,7 @@ See the [download page](https://www.agents-anywhere.com/en/download) for platfor
 - macOS: Universal for Apple Silicon / Intel; signed and notarized; requires macOS 12 or later.
 - Windows: x64 desktop workbench with a managed Connector; the current installer is not code signed.
 - Android: Android 8.0 or later.
-- iOS / iPadOS: download from the App Store.
+- iOS / iPadOS: download from the App Store, or install the beta through TestFlight; beta availability is shown on the invitation page.
 - Linux / headless: run the Connector on the work machine and control it from another client.
 
 The macOS, Windows and Android files are **Agents Anywhere** installers hosted in the ModelScope repository `t4wefan/deepseek-harness-desktop`; the same files are also attached to the [v2.0.3 GitHub Release](https://github.com/anywhere-labs/Agents-Anywhere/releases/tag/v2.0.3). Historical 0.1.x GitHub Releases are not the 2.0 download channel. In-app update addresses in the current released clients are still placeholders; download manually using the links above.

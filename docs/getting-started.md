@@ -17,7 +17,7 @@
 - **macOS：** 安装 Universal DMG，适用于 Apple Silicon 和 Intel。
 - **Windows：** 安装 x64 桌面客户端。
 - **Android：** 安装 APK。
-- **iOS / iPadOS：** 在 [App Store](https://apps.apple.com/cn/app/agents-anywhere/id6787125178) 下载安装。
+- **iOS / iPadOS：** 在 [App Store](https://apps.apple.com/cn/app/agents-anywhere/id6787125178) 下载安装；也可以通过 [TestFlight](https://testflight.apple.com/join/GKGaut99) 安装测试版，以邀请页的可用状态为准。
 - **Web：** 打开 [web.agents-anywhere.com](https://web.agents-anywhere.com)。
 
 在工作设备上使用桌面客户端，或按 [Connector CLI 说明](../connector/README.md#run)接入无图形界面的机器。手机、平板和 Web 用于访问已连接的工作设备。
