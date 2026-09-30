@@ -511,7 +511,7 @@ function DesktopTab() {
         </div>
         <Separator />
         <FieldGroup className="gap-0 px-6 py-5">
-          <Field>
+          <Field className="pb-4">
             <span className="text-sm font-medium">{t("desktopUvPath")}</span>
             <Input
               value={advancedDraft.uvPath}
