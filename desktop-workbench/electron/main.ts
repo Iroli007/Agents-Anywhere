@@ -400,7 +400,19 @@ function createMainWindow(showOnReady = true, route = "/"): BrowserWindow {
     if (showOnReady) showMainWindow();
   });
   window.webContents.setWindowOpenHandler(({ url }) => {
-    if (isWorkbenchUrl(url)) return { action: "allow" };
+    if (isWorkbenchUrl(url)) {
+      return {
+        action: "allow",
+        overrideBrowserWindowOptions: {
+          webPreferences: {
+            preload: path.join(__dirname, "preload.js"),
+            contextIsolation: true,
+            nodeIntegration: false,
+            sandbox: false,
+          },
+        },
+      };
+    }
     void shell.openExternal(url);
     return { action: "deny" };
   });
