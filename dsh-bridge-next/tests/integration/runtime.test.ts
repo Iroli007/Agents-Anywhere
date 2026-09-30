@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os'
 import { createConnection } from 'node:net'
 import { createInterface } from 'node:readline'
 import { setTimeout as delay } from 'node:timers/promises'
-import { nativeRuntime } from '../fixtures/native-runtime.js'
+import { bridgePath, nativeRuntime } from '../fixtures/native-runtime.js'
 import SqliteQuery from '@deepseek-ai/dsh-session-query-sqlite'
 import { RuntimeServer, type Endpoint } from '../../src/host/dsh-runtime/server.js'
 import { sessionId } from '../../src/host/dsh-runtime/identity.js'
@@ -43,7 +43,7 @@ test('published Host + official SessionQuery/JSONL + actual Python adapter compl
   let context: Awaited<ReturnType<typeof nativeRuntime>> | undefined
   try {
     context = await nativeRuntime(home)
-    const path = join(home, 'agents-anywhere/bridge/endpoint.json')
+    const path = bridgePath(home, 'endpoint.json')
     const value = await endpoint(path)
     if (process.platform !== 'win32') assert.equal((await stat(path)).mode & 0o777, 0o600)
     const connection = await client(value)

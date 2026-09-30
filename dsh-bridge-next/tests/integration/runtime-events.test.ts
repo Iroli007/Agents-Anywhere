@@ -8,7 +8,7 @@ import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { SessionId } from '@deepseek-ai/dsh-session'
 import { createAssistantMessage, createToolResultMessage, createUserMessage, ToolCallId } from '@deepseek-ai/dsh-llm'
-import { nativeRuntime } from '../fixtures/native-runtime.js'
+import { bridgePath, nativeRuntime } from '../fixtures/native-runtime.js'
 import { corruptHistory } from '../fixtures/corrupt-history.js'
 import { mountAgents, TextAdapter, initialSelections } from '../fixtures/agent-runtime.js'
 import { SyncFeed, SYNC_FLUSH_MS, type SyncBatch, type SyncOperation } from '../../src/host/dsh-runtime/sync.js'
@@ -336,7 +336,7 @@ test('fresh detail and send checks distinguish archives from persisted and blank
   const native = fixture.ctx.agentsAnywhereRuntime.native
   let endpoint: { port: number, host: string, token: string } | undefined
   for (let attempt = 0; attempt < 100; attempt++) {
-    try { endpoint = JSON.parse(await readFile(join(home, 'agents-anywhere/bridge/endpoint.json'), 'utf8')); break }
+    try { endpoint = JSON.parse(await readFile(bridgePath(home, 'endpoint.json'), 'utf8')); break }
     catch { await delay(10) }
   }
   assert.ok(endpoint, 'published runtime endpoint')

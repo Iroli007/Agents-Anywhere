@@ -33,6 +33,11 @@ export function stateRoot(config: Config): string {
   return config.stateRoot ?? join(userInfo().homedir, '.agents-anywhere', 'dsh-bridge-next')
 }
 
+/** Fixed per-user rendezvous with the Connector; DSH_HOME and stateRoot do not move it. */
+export function bridgeDirectory(): string {
+  return join(userInfo().homedir, '.agents-anywhere', 'dsh-bridge')
+}
+
 export function resolveConfig(config: Config): ResolvedConfig {
   if (config.dshHome !== undefined && !isAbsolute(config.dshHome)) throw new Error('DSH_HOME 必须是绝对路径。')
   const root = stateRoot(config)
