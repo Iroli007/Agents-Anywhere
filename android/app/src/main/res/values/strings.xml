@@ -421,6 +421,9 @@
     <string name="session_disable_takeover_title">Turn off takeover?</string>
     <string name="session_enable_takeover_body">&#8226; Once enabled, you can take over this session from Agents Anywhere on the web.\n&#8226; Messages may not show up in the %1$s client right away. Restarting them usually refreshes the sync.\n&#8226; If you work in both Agents Anywhere and the %1$s client at the same time, the session may behave unexpectedly.</string>
     <string name="session_disable_takeover_body">&#8226; After takeover is turned off, this session goes back to read-only mode and you can no longer send messages.\n&#8226; The history created here may not show up in the %1$s client right away. Restarting them usually refreshes the sync.</string>
+    <string name="session_enable_takeover_dsh_body">DSH now syncs in real time %1$s with Agents Anywhere. Turn on takeover to send messages.</string>
+    <string name="session_disable_takeover_dsh_body">After takeover is turned off, this session goes back to read-only mode and you can no longer send messages.</string>
+    <string name="session_beta_badge" translatable="false">Beta</string>
     <string name="session_send_anyway_title">Send anyway?</string>
     <string name="session_send_anyway_body">This session is in an error state. Sending will try to start a new turn.</string>
     <string name="session_approval_fallback">Allow this %1$s request?</string>

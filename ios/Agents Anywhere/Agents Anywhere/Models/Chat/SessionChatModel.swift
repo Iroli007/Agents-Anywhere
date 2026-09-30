@@ -46,6 +46,10 @@ final class SessionChatModel {
         }
         return String(localized: "Agent")
     }
+    var isDsh: Bool {
+        guard let meta = session.metadata else { return false }
+        return (meta.runtimeType ?? meta.runtime) == "dsh"
+    }
     var sendingPlaceholder: String? {
         let submitting = session.pendingMessages.contains { $0.delivery == .sending || $0.delivery == .accepted }
         if submitting || session.awaitingReplyID != nil { return session.isLocalCreation ? String(localized: "正在创建会话…") : String(localized: "等待 \(agentName) 回应…") }

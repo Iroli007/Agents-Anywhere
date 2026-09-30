@@ -117,7 +117,7 @@ struct SessionChatView: View, Equatable {
                 .accessibilityLabel(String(localized: "会话菜单"))
             }
         }
-        .modifier(SessionTakeoverConfirmation(pending: $pendingTakeover) { enabled in
+        .modifier(SessionTakeoverConfirmation(pending: $pendingTakeover, isDsh: model.isDsh) { enabled in
             model.error = nil
             if !(await model.setTakeover(enabled)), let error = model.takeoverError { model.error = error }
         })
