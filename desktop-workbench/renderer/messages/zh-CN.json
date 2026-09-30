@@ -275,6 +275,7 @@
       "expand": "展开侧栏",
       "markAllRead": "全部标为已读",
       "filter": "过滤最近会话",
+      "showMoreSessions": "显示其余 {count} 个会话",
       "mobileConnections": "手机连接",
       "newSession": "新会话",
       "open": "打开",
@@ -1036,6 +1037,20 @@
       "commandNoMatches": "没有匹配的指令",
       "commandLoading": "正在读取指令…",
       "commandFailed": "无法执行指令。",
+      "commandUnavailable": "此会话暂时无法使用指令。",
+      "commandCatalogError": "无法读取指令，请重新打开菜单重试。",
+      "commandUnknown": "未知指令，请从菜单中选择。",
+      "commandAttachments": "运行指令前请移除附件；草稿会保留。",
+      "commandMultiline": "此指令不支持多行输入。",
+      "commandInvalidArgs": "此指令不接受这些参数。",
+      "commandAccepted": "指令已接受，后台任务可能仍在进行。",
+      "commandCompleted": "指令已完成。",
+      "commandUnknownOutcome": "结果尚不确定，请先检查会话状态再决定是否重试。",
+      "commandReason_session_unloaded": "请先打开此会话，再运行指令。",
+      "commandReason_native_commands_unavailable": "此 Codex 版本尚不支持所需的指令操作。",
+      "commandReason_codex_unavailable": "Codex 当前不可用。",
+      "commandDetails": "查看详情",
+      "commandLess": "收起",
       "approvalPending": "{count} 个确认请求待处理",
       "approvalPendingPlural": "{count} 个确认请求待处理",
       "interactionPending": "{count} 个交互待处理",
@@ -1653,7 +1668,7 @@
     "team": {
       "title": "团队",
       "description": "管理谁可以登录这个实例，以及他们能做什么。",
-      "searchPlaceholder": "按用户 ID 搜索",
+      "searchPlaceholder": "按昵称或邮箱搜索",
       "newUser": "新用户",
       "newUserDescription": "为这个实例创建本地账号。",
       "all": "全部",
@@ -1713,7 +1728,16 @@
       "daysAgo": "{count} 天前",
       "weeksAgo": "{count} 周前",
       "email": "邮箱",
-      "emailDescription": "用户将使用此邮箱登录。"
+      "emailDescription": "用户将使用此邮箱登录。",
+      "invalidEmail": "请输入有效邮箱。",
+      "invalidDisplayName": "昵称需要 1–64 个字符。",
+      "typeEmail": "输入账号邮箱以确认",
+      "skipEmailVerification": "无需邮箱验证",
+      "skipEmailVerificationDescription": "仅对这个用户生效。不需要验证码，邮箱会被视为已验证。",
+      "previousPage": "上一页",
+      "nextPage": "下一页",
+      "pageOf": "{page} / {pages}",
+      "pageRange": "第 {from}-{to} 位，共 {total} 位"
     },
     "opsDashboard": {
       "title": "看板",
@@ -1849,7 +1873,10 @@
         "save": "保存邮箱设置",
         "saved": "邮箱设置已保存。",
         "failed": "邮箱设置保存失败。"
-      }
+      },
+      "passwordReset": "找回密码",
+      "passwordResetDescription": "允许用户通过邮箱验证码重置忘记的密码。",
+      "passwordResetNeedsEmail": "需要先开启邮件服务，找回密码会通过邮件发送验证码。"
     }
   },
   "preview": {
