@@ -2080,6 +2080,23 @@
         }
       }
     },
+    "DSH 现可实时同步（Beta）Agents Anywhere。启用接管即可发送消息。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DSH now syncs in real time (Beta) with Agents Anywhere. Turn on takeover to send messages."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "DSH 现可实时同步（Beta）Agents Anywhere。启用接管即可发送消息。"
+          }
+        }
+      }
+    },
     "Dark": {
       "comment": "Shared with Web: pages.settings.dark. Sync with ios/scripts/web_copy.py.",
       "extractionState": "manual",
@@ -8812,6 +8829,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "关闭侧栏"
+          }
+        }
+      }
+    },
+    "关闭后会话回到只读模式。": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The session will become read-only."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "关闭后会话回到只读模式。"
           }
         }
       }

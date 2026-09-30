@@ -5,6 +5,7 @@ import { ArrowDown, ChevronDown, CircleAlert, Loader2, WifiOff } from "lucide-re
 import { toast } from "sonner"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -1643,6 +1644,8 @@ export function SessionDetail({
   const takeoverDescription = (tSession.raw(
     takeoverTarget ? "takeoverEnableDescription" : "takeoverDisableDescription",
   ) as string[]).map((line) => line.replaceAll("{agent}", takeoverAgent))
+  // DSH syncs with Agents Anywhere in real time, so the restart-to-sync caveats do not apply.
+  const takeoverIsDsh = sessionRuntimeType(session) === "dsh"
 
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden overscroll-none">
@@ -1811,13 +1814,25 @@ export function SessionDetail({
             <DialogTitle>
               {takeoverTarget ? tSession("takeoverEnableTitle") : tSession("takeoverDisableTitle")}
             </DialogTitle>
-            <DialogDescription asChild>
-              <ul className="flex list-disc flex-col gap-1 pl-5">
-                {takeoverDescription.map((line) => (
-                  <li key={line}>{line}</li>
-                ))}
-              </ul>
-            </DialogDescription>
+            {takeoverIsDsh && takeoverTarget ? (
+              <DialogDescription>
+                {tSession.rich("takeoverEnableDshDescription", {
+                  beta: (chunks) => (
+                    <Badge variant="secondary" className="mx-1 align-middle">
+                      {chunks}
+                    </Badge>
+                  ),
+                })}
+              </DialogDescription>
+            ) : (
+              <DialogDescription asChild>
+                <ul className="flex list-disc flex-col gap-1 pl-5">
+                  {(takeoverIsDsh ? takeoverDescription.slice(0, 1) : takeoverDescription).map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              </DialogDescription>
+            )}
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={handleDismissTakeover} disabled={takeoverBusy}>
