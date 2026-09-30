@@ -335,7 +335,12 @@ class DshRuntime(AgentRuntime):
             capability_set = _object(await self._request("runtime.getCapabilities"))
             if not provider_config.dsh_capabilities(capability_set)["attachments"]:
                 raise RuntimeUnsupportedError("This DSH Bridge does not support attachments")
-        directory = provider_config.bridge_directory()
+        # Stage beside the endpoint in use so older plugins find the files too.
+        directory = (
+            self._client.endpoint.path.parent
+            if self._client is not None
+            else provider_config.bridge_directory()
+        )
         async with staged_attachments(self.host, session_id, attachments, directory) as images:
             if images:
                 params["attachments"] = images

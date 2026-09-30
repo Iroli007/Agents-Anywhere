@@ -27,6 +27,7 @@ from connector.runtimes.dsh.discovery import (
     BridgeEndpoint,
     DshDiscovery,
     discover,
+    load_endpoint,
     probe,
 )
 from connector.runtimes.dsh.provider import DshProvider
@@ -315,7 +316,7 @@ def test_dsh_questions_forward_existing_notices_and_answers_without_reinterpreta
     asyncio.run(run())
 
 
-def test_endpoint_lives_in_aa_home_while_session_identity_keeps_the_dsh_home_key(
+def test_endpoint_lives_in_aa_home_while_session_identity_keeps_the_legacy_key(
     tmp_path: Path, monkeypatch
 ) -> None:
     monkeypatch.setenv("DSH_HOME", str(tmp_path / "env-dsh"))
@@ -331,6 +332,29 @@ def test_endpoint_lives_in_aa_home_while_session_identity_keeps_the_dsh_home_key
     assert DshProvider().session_source_key(config).key == filesystem_resource_key(
         home / "agents-anywhere" / "bridge" / "endpoint.json"
     )
+
+
+def test_endpoint_prefers_the_aa_home_and_falls_back_to_the_legacy_dsh_home(tmp_path: Path) -> None:
+    values = {"dshHome": str(tmp_path / "dsh")}
+    record = {"version": 1, "host": "127.0.0.1", "pid": os.getpid(), "token": "token"}
+    legacy = provider_config.legacy_endpoint_path(values)
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(json.dumps({**record, "port": 1111}))
+
+    # An older plugin only publishes under DSH_HOME.
+    assert load_endpoint(values).path == legacy
+    assert load_endpoint(values).port == 1111
+
+    current = provider_config.endpoint_path()
+    current.parent.mkdir(parents=True)
+    current.write_text(json.dumps({**record, "port": 2222}))
+    assert load_endpoint(values).path == current
+    assert load_endpoint(values).port == 2222
+
+    # An invalid current endpoint is an error, not a reason to use the legacy one.
+    current.write_text("{}")
+    with pytest.raises(ValueError):
+        load_endpoint(values)
 
 
 def test_offline_endpoint_can_be_configured_for_background_recovery(tmp_path: Path, monkeypatch) -> None:

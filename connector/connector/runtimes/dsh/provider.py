@@ -242,6 +242,6 @@ class DshProvider(RuntimeProvider):
             kind="dsh_bridge_endpoint",
             # Keyed by the former endpoint path so existing session IDs stay stable.
             key=filesystem_resource_key(
-                provider_config.session_source_path(dict(config.values))
+                provider_config.legacy_endpoint_path(dict(config.values))
             ),
         )

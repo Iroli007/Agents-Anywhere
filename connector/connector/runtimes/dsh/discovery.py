@@ -122,7 +122,13 @@ async def probe(values: dict[str, Any]) -> DshDiscovery:
 
 def load_endpoint(values: dict[str, Any]) -> BridgeEndpoint:
     path = provider_config.endpoint_path()
-    raw = json.loads(path.read_text(encoding="utf-8"))
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        # Older plugins still publish under DSH_HOME.
+        path = provider_config.legacy_endpoint_path(values)
+        text = path.read_text(encoding="utf-8")
+    raw = json.loads(text)
     if not isinstance(raw, dict) or raw.get("version") != 1:
         raise ValueError("bridge endpoint has an unsupported version")
     host = raw.get("host")

@@ -120,8 +120,11 @@ def endpoint_path() -> Path:
     return bridge_directory() / "endpoint.json"
 
 
-def session_source_path(values: dict[str, Any]) -> Path:
-    """Former endpoint location, kept only as the session identity; never read."""
+def legacy_endpoint_path(values: dict[str, Any]) -> Path:
+    """Endpoint location of older plugins under DSH_HOME.
+
+    Read only when the fixed endpoint is missing, and kept as the session identity.
+    """
     return Path(
         canonical_path(
             dsh_home(values) / "agents-anywhere" / "bridge" / "endpoint.json"

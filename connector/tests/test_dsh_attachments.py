@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from types import SimpleNamespace
 
 import pytest
 
@@ -76,4 +77,24 @@ def test_image_only_turn_keeps_large_bytes_out_of_rpc_and_cleans_up(tmp_path):
         result = await runtime.start_turn("session", "native", "", attachments=(image(content=content),), client_message_id="message")
         assert result.ok
         assert list((provider_config.bridge_directory() / "attachments/staging").iterdir()) == []
+    asyncio.run(run())
+
+
+def test_attachments_are_staged_beside_a_legacy_endpoint(tmp_path):
+    content = b"legacy"
+    legacy = provider_config.legacy_endpoint_path({"dshHome": str(tmp_path)})
+
+    class Runtime(DshRuntime):
+        async def _request(self, method, params=None):
+            if method == "runtime.getCapabilities":
+                return {"capabilities": [{"capabilityId": "runtime.attachment", "supported": True, "available": True, "allowed": True}]}
+            path = legacy.parent / "attachments/staging" / params["attachments"][0]["uploadId"]
+            assert path.read_bytes() == content
+            return {"accepted": True}
+
+    async def run():
+        runtime = Runtime(RuntimeConfig("dsh", 1, {"dshHome": str(tmp_path)}), Host(content))
+        runtime._client = SimpleNamespace(endpoint=SimpleNamespace(path=legacy))
+        result = await runtime.start_turn("session", "native", "", attachments=(image(content=content),), client_message_id="message")
+        assert result.ok
     asyncio.run(run())
