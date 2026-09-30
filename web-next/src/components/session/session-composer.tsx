@@ -1,7 +1,7 @@
 "use client"
 
 import * as React from "react"
-import { ArrowUp, Check, ChevronDown, Loader2, Square } from "lucide-react"
+import { ArrowUp, Check, ChevronDown, Loader2, Square, X } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -52,7 +52,18 @@ import { CAPABILITY, capabilityIsUsable, findCapability, attachmentMimeTypes } f
 import { useElementWidth } from "@/hooks/use-element-width"
 import { sessionRuntimeId, sessionRuntimeType } from "@/features/dashboard/runtime-instances"
 
-import { commandAllowed, commandRequest, commandUi, exactCommand, parseSlashIntent, type CommandOutcome } from "@/components/session/runtime-command-model"
+import {
+  commandBlock,
+  commandLikeToken,
+  commandMatchesQuery,
+  commandRequest,
+  commandUi,
+  exactCommand,
+  parseSlashIntent,
+  slashMode,
+  type CommandBlock,
+  type CommandOutcome,
+} from "@/components/session/runtime-command-model"
 
 export type { AttachedFile }
 
@@ -125,15 +136,25 @@ export function SessionComposer({
   const [commandInputError, setCommandInputError] = React.useState<string | null>(null)
   const [resultExpanded, setResultExpanded] = React.useState(false)
   const [selectorRequest, setSelectorRequest] = React.useState(0)
+  const [activeCommandIndex, setActiveCommandIndex] = React.useState(0)
+  const [menuDismissedFor, setMenuDismissedFor] = React.useState<string | null>(null)
+  const commandMenuId = React.useId()
   React.useEffect(() => {
     setCommandFeedback(null)
     setCommandInputError(null)
+    setMenuDismissedFor(null)
     setCommandPending(false)
     setSelectorRequest(0)
     pendingCommandRef.current = false
     activeCommandRequestRef.current = null
     return () => { activeCommandRequestRef.current = null }
   }, [session.id])
+  React.useEffect(() => {
+    // Success is also visible in the timeline; only failures stay until dismissed.
+    if (!commandFeedback?.ok) return
+    const timer = window.setTimeout(() => setCommandFeedback((current) => (current === commandFeedback ? null : current)), 5000)
+    return () => window.clearTimeout(timer)
+  }, [commandFeedback])
   const composerWidth = useElementWidth(composerRef)
   const runtimeStatus = effectiveRuntimeStatus(runtimeState, session)
   const runtimeSelections = runtimeState?.selections ?? {}
@@ -198,7 +219,6 @@ export function SessionComposer({
     !commandPending &&
     !interrupting &&
     acceptsUserInput
-  const commandWritable = !creatingSession && !sending && !interrupting && !commandPending && session.takeover && !sourceUnavailable
   const hasInput = value.trim().length > 0 || attachments.length > 0
   const attachmentsReady = attachmentsAllowed && (attachments.length === 0 || (allUploaded && !uploadsPending && !uploadFailed))
   const activeSessionCanInterrupt = Boolean(
@@ -351,23 +371,49 @@ export function SessionComposer({
                 ? tSession("errorPlaceholder")
                 : tSession("replyPlaceholder")
   const slashIntent = parseSlashIntent(value)
-  const commandQuery = slashIntent?.command ?? null
-  const showCommandMenu = commandQuery !== null && !slashIntent?.multiline && !slashIntent?.suffix.trim() && attachments.length === 0
-  const showInterruptAction = showInterrupt && !slashIntent
+  // "/Users/me/file.ts" and other non-command slash text never opens the menu.
+  const slashCandidate = slashIntent && commandLikeToken(slashIntent) ? slashIntent : null
+  const commandQuery = slashCandidate?.command ?? null
+  const catalogUsable = canUseCommands && connectorOnline
+  const mode = slashMode(slashIntent, runtimeCommands, { usable: catalogUsable, loading: commandsLoading, error: commandsError })
   const commandSuggestions = React.useMemo(
-    () => runtimeCommands.filter((command) => commandMatchesQuery(command, commandQuery)),
+    () => (commandQuery === null ? [] : runtimeCommands.filter((command) => commandMatchesQuery(command, commandQuery))),
     [commandQuery, runtimeCommands],
   )
+  const showCommandMenu =
+    slashCandidate !== null &&
+    catalogUsable &&
+    slashCandidate.suffix === "" &&
+    attachments.length === 0 &&
+    menuDismissedFor !== value &&
+    (commandSuggestions.length > 0 || (!runtimeCommands.length && (commandsLoading || commandsError)))
+  const highlightedCommand = commandSuggestions.length
+    ? commandSuggestions[Math.min(activeCommandIndex, commandSuggestions.length - 1)]
+    : null
+  React.useEffect(() => { setActiveCommandIndex(0) }, [commandQuery])
+  const showInterruptAction = showInterrupt && mode.kind === "message" && !showCommandMenu
   React.useEffect(() => {
-    onCommandQueryChange(slashIntent ? commandQuery : null)
-  }, [commandQuery, onCommandQueryChange, slashIntent !== null])
-  const canSubmitCommand = Boolean(slashIntent && !pendingCommandRef.current && commandWritable && canUseCommands && connectorOnline)
+    onCommandQueryChange(commandQuery)
+  }, [commandQuery, onCommandQueryChange])
+  const commandBusy = sending || interrupting || commandPending
+  const blockOf = (command: RuntimeCommand): CommandBlock | null => commandBusy ? "busy" : commandBlock(command, runtimeStatus, {
+    capability: canUseCommands,
+    writable: session.takeover && !sourceUnavailable && !creatingSession,
+    online: connectorOnline,
+  })
+  const blockMessage = (command: RuntimeCommand, block: CommandBlock): string => {
+    if (block !== "disabled") return tSession(`commandBlocked_${block}`)
+    return command.disabledReason && tSession.has(`commandReason_${command.disabledReason}`)
+      ? tSession(`commandReason_${command.disabledReason}`)
+      : command.disabledReason || tSession("commandUnavailable")
+  }
+  const canSubmitCommand = mode.kind === "command" && !commandPending && connectorOnline
   const canSubmitMessage =
     canSend &&
     session.takeover &&
     hasInput &&
     attachmentsReady &&
-    (attachments.length === 0 || canUseAttachments) && !slashIntent
+    (attachments.length === 0 || canUseAttachments) && mode.kind === "message"
   const concurrentWriter = runtimeState?.error?.code === "DSH_CONCURRENT_WRITER_DETECTED"
   const updateValue = React.useCallback((nextValue: string) => {
     valueRef.current = nextValue
@@ -375,14 +421,29 @@ export function SessionComposer({
     setCommandInputError(null)
   }, [onValueChange])
 
+  const chooseCommand = (command: RuntimeCommand) => {
+    const block = blockOf(command)
+    if (block) { setCommandInputError(blockMessage(command, block)); return }
+    const sourceDraft = valueRef.current
+    const resolved = slashIntent && exactCommand(slashIntent, [command]) === command
+    const raw = resolved ? sourceDraft : `/${command.id}`
+    if (command.acceptsArgs) {
+      updateValue(raw === `/${command.id}` ? `${raw} ` : raw)
+      textareaRef.current?.focus()
+      return
+    }
+    void runCommand(command, raw, sourceDraft)
+  }
+  const completeCommand = (command: RuntimeCommand) => {
+    updateValue(`/${command.id}${command.acceptsArgs ? " " : ""}`)
+    textareaRef.current?.focus()
+  }
+
   const runCommand = async (command: RuntimeCommand, raw: string, sourceDraft = raw) => {
     if (pendingCommandRef.current) return
     const intent = parseSlashIntent(raw)
-    if (!commandAllowed(command, runtimeStatus, canUseCommands, commandWritable, connectorOnline)) {
-      setCommandInputError(command.disabledReason && tSession.has(`commandReason_${command.disabledReason}`)
-        ? tSession(`commandReason_${command.disabledReason}`) : command.disabledReason || tSession("commandUnavailable"))
-      return
-    }
+    const block = blockOf(command)
+    if (block) { setCommandInputError(blockMessage(command, block)); return }
     if (attachments.length) { setCommandInputError(tSession("commandAttachments")); return }
     const request = commandRequest(intent, command)
     if (!request) { setCommandInputError(tSession(intent?.multiline ? "commandMultiline" : "commandInvalidArgs")); return }
@@ -427,12 +488,13 @@ export function SessionComposer({
 
   const submit = async () => {
     if (!hasInput) return
-    if (slashIntent) {
+    if (mode.kind === "pending") {
+      setCommandInputError(tSession(commandsError ? "commandCatalogError" : "commandLoading"))
+      return
+    }
+    if (mode.kind === "command") {
       if (attachments.length) { setCommandInputError(tSession("commandAttachments")); return }
-      if (commandsLoading) { setCommandInputError(tSession("commandLoading")); return }
-      const command = exactCommand(slashIntent, runtimeCommands)
-      if (!command) { setCommandInputError(commandsError ? tSession("commandCatalogError") : tSession("commandUnknown")); return }
-      await runCommand(command, value)
+      await runCommand(mode.command, value)
       return
     }
     if (!canSubmitMessage) return
@@ -467,13 +529,16 @@ export function SessionComposer({
     >
       <DragOverlay isDragging={isDragging} />
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-        {commandFeedback ? (
-          <Alert variant={commandFeedback.ok ? "default" : "destructive"} role={commandFeedback.ok ? "status" : "alert"}>
+        {commandFeedback && !commandFeedback.ok ? (
+          <Alert variant="destructive" role="alert" className="pr-10">
             <AlertDescription>
-              <span>{tSession(commandFeedback.ok ? (commandFeedback.state === "completed" ? "commandCompleted" : "commandAccepted") : commandFeedback.state === "unknown" ? "commandUnknownOutcome" : "commandFailed")}</span>
+              <span>{tSession(commandFeedback.state === "unknown" ? "commandUnknownOutcome" : "commandFailed")}</span>
               {commandFeedback.message ? <div className="mt-1 whitespace-pre-wrap break-words">{commandFeedback.message.length > 500 && !resultExpanded ? `${commandFeedback.message.slice(0, 500)}…` : commandFeedback.message}</div> : null}
               {commandFeedback.message && commandFeedback.message.length > 500 ? <Button type="button" variant="ghost" size="xs" onClick={() => setResultExpanded(!resultExpanded)}>{tSession(resultExpanded ? "commandLess" : "commandDetails")}</Button> : null}
             </AlertDescription>
+            <Button type="button" variant="ghost" size="icon-xs" className="absolute right-2 top-2" aria-label={tSession("commandDismiss")} onClick={() => setCommandFeedback(null)}>
+              <X className="size-3.5" />
+            </Button>
           </Alert>
         ) : null}
         {concurrentWriter ? (
@@ -488,6 +553,54 @@ export function SessionComposer({
             isDragging && "border-primary bg-primary/5",
           )}
         >
+          {showCommandMenu ? (
+            <div
+              id={commandMenuId}
+              role="listbox"
+              aria-label={tSession("commandMenu")}
+              className="absolute inset-x-0 bottom-full z-30 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border bg-popover p-1 text-sm text-popover-foreground shadow-lg"
+              onMouseDown={(event) => event.preventDefault()}
+            >
+              {commandSuggestions.length > 0 ? (
+                commandSuggestions.map((command, index) => {
+                  const block = blockOf(command)
+                  const ui = commandUi(command)
+                  const hint = ui?.kind === "execute" ? ui.argumentHint : undefined
+                  const highlighted = command === highlightedCommand
+                  return (
+                    <button
+                      key={command.id}
+                      id={`${commandMenuId}-${index}`}
+                      type="button"
+                      role="option"
+                      aria-selected={highlighted}
+                      aria-disabled={block !== null}
+                      className={cn(
+                        "flex w-full items-baseline gap-3 rounded-lg px-3 py-2 text-left",
+                        highlighted && "bg-accent text-accent-foreground",
+                      )}
+                      onMouseEnter={() => setActiveCommandIndex(index)}
+                      onClick={() => chooseCommand(command)}
+                    >
+                      <span className={cn("code-mono shrink-0 text-xs", block ? "text-muted-foreground" : "text-primary")}>
+                        /{command.id}{hint ? <span className="text-muted-foreground"> {hint}</span> : null}
+                      </span>
+                      <span className={cn("min-w-0 flex-1 truncate text-xs", block ? "text-muted-foreground/80" : "text-muted-foreground")}>
+                        {block ? blockMessage(command, block) : command.description || command.title}
+                      </span>
+                    </button>
+                  )
+                })
+              ) : commandsError ? (
+                <div role="alert" className="px-3 py-2 text-xs text-destructive">{tSession("commandCatalogError")}</div>
+              ) : (
+                <div className="flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground">
+                  <Loader2 className="size-3.5 animate-spin" />
+                  {tSession("commandLoading")}
+                </div>
+              )}
+            </div>
+          ) : null}
           {isDragging ? (
             <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-background/75 text-sm font-medium text-foreground backdrop-blur-sm">
               {tSession("dropFiles")}
@@ -497,57 +610,50 @@ export function SessionComposer({
             <AttachmentPreviewList attachments={attachments} onRemove={remove} />
             {attachmentError ? <p role="alert" className="text-xs text-destructive">{attachmentError}</p> : null}
             {commandInputError ? <p role="alert" className="text-xs text-destructive">{commandInputError}</p> : null}
-            {showCommandMenu ? (
-              <div className="rounded-xl border border-border bg-popover p-1 text-sm shadow-sm">
-                {commandSuggestions.length > 0 ? (
-                  commandSuggestions.map((command) => (
-                    <button
-                      key={command.id}
-                      type="button"
-                      className={cn(
-                        "flex w-full items-start gap-3 rounded-lg px-3 py-2 text-left transition-colors hover:bg-accent hover:text-accent-foreground",
-                        !command.enabled && "cursor-not-allowed opacity-50 hover:bg-transparent hover:text-current",
-                      )}
-                      disabled={!commandAllowed(command, runtimeStatus, canUseCommands, commandWritable, connectorOnline)}
-                      onClick={() => {
-                        if (!commandAllowed(command, runtimeStatus, canUseCommands, commandWritable, connectorOnline)) return
-                        const sourceDraft = valueRef.current
-                        const resolved = slashIntent && exactCommand(slashIntent, [command]) === command
-                        const raw = resolved ? sourceDraft : `/${command.id}`
-                        if (command.acceptsArgs) {
-                          updateValue(raw === `/${command.id}` ? `${raw} ` : raw)
-                          textareaRef.current?.focus()
-                          return
-                        }
-                        void runCommand(command, raw, sourceDraft)
-                      }}
-                    >
-                      <span className="code-mono shrink-0 text-xs text-primary">/{command.id}</span>
-                      <span className="min-w-0">
-                        <span className="block font-medium">{command.title}</span>
-                        <span className="block text-xs text-muted-foreground">
-                          {command.disabledReason ? (tSession.has(`commandReason_${command.disabledReason}`) ? tSession(`commandReason_${command.disabledReason}`) : command.disabledReason) : commandUi(command)?.kind === "execute" ? (commandUi(command) as { argumentHint?: string }).argumentHint || command.description : command.description}
-                        </span>
-                      </span>
-                    </button>
-                  ))
-                ) : commandsLoading ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">{tSession("commandLoading")}</div>
-                ) : commandsError ? (
-                  <div role="alert" className="px-3 py-2 text-xs text-destructive">{tSession("commandCatalogError")}</div>
-                ) : !canUseCommands ? (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">{tSession("commandUnavailable")}</div>
-                ) : (
-                  <div className="px-3 py-2 text-xs text-muted-foreground">{tSession("commandNoMatches")}</div>
-                )}
-              </div>
+            {commandFeedback?.ok ? (
+              <p role="status" className="flex items-start gap-1.5 text-xs text-muted-foreground">
+                <Check className="mt-0.5 size-3.5 shrink-0 text-primary" />
+                <span className="min-w-0 whitespace-pre-wrap break-words">
+                  {tSession(commandFeedback.state === "completed" ? "commandCompleted" : "commandAccepted")}
+                  {commandFeedback.message ? ` ${commandFeedback.message.length > 200 ? `${commandFeedback.message.slice(0, 200)}…` : commandFeedback.message}` : null}
+                </span>
+              </p>
             ) : null}
             <Textarea
               ref={textareaRef}
               value={value}
               onChange={(event) => updateValue(event.currentTarget.value)}
+              role={catalogUsable ? "combobox" : undefined}
+              aria-expanded={catalogUsable ? showCommandMenu : undefined}
+              aria-controls={showCommandMenu ? commandMenuId : undefined}
+              aria-autocomplete={catalogUsable ? "list" : undefined}
+              aria-activedescendant={showCommandMenu && highlightedCommand ? `${commandMenuId}-${commandSuggestions.indexOf(highlightedCommand)}` : undefined}
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing) return
+                if (showCommandMenu && event.key === "Escape") {
+                  event.preventDefault()
+                  setMenuDismissedFor(value)
+                  return
+                }
+                if (showCommandMenu && highlightedCommand) {
+                  const count = commandSuggestions.length
+                  const index = commandSuggestions.indexOf(highlightedCommand)
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+                    event.preventDefault()
+                    setActiveCommandIndex((index + (event.key === "ArrowDown" ? 1 : count - 1)) % count)
+                    return
+                  }
+                  if (event.key === "Tab" && !event.shiftKey) {
+                    event.preventDefault()
+                    completeCommand(highlightedCommand)
+                    return
+                  }
+                  if (event.key === "Enter" && !event.shiftKey) {
+                    event.preventDefault()
+                    chooseCommand(highlightedCommand)
+                    return
+                  }
+                }
                 if (event.key === "Enter" && !event.shiftKey) {
                   event.preventDefault()
                   if (!showInterruptAction) void submit()
@@ -780,27 +886,6 @@ export function SessionComposer({
       </div>
     </div>
   )
-}
-
-function commandMatchesQuery(command: RuntimeCommand, query: string | null): boolean {
-  if (query === null) return false
-  const normalized = query.toLowerCase()
-  if (!normalized) return true
-  return (
-    fuzzyIncludes(command.id.toLowerCase(), normalized) ||
-    fuzzyIncludes(command.title.toLowerCase(), normalized) ||
-    command.aliases.some((alias) => fuzzyIncludes(alias.toLowerCase(), normalized))
-  )
-}
-
-function fuzzyIncludes(value: string, query: string): boolean {
-  if (value.includes(query)) return true
-  let index = 0
-  for (const char of value) {
-    if (char === query[index]) index += 1
-    if (index === query.length) return true
-  }
-  return query.length === 0
 }
 
 function effectiveRuntimeStatus(

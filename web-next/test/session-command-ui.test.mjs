@@ -19,7 +19,7 @@ const { dashboardApi } = await import('../src/features/dashboard/api.ts')
 hook.deregister()
 const messages = JSON.parse(readFileSync(new URL('../messages/en.json',import.meta.url),'utf8'))
 const session = {id:'s1',runtime:'codex',runtimeId:'codex',connectorStatus:'online',status:'idle',archived:false,takeover:true}
-const capability = {revision:1,capabilities:[{capabilityId:'session.commands',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true},{capabilityId:'session.interrupt',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true}]}
+const capability = {revision:1,capabilities:[{capabilityId:'session.commands',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true},{capabilityId:'session.interrupt',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true},{capabilityId:'session.send_message',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true}]}
 const descriptor = (id, acceptsArgs, statuses=['idle']) => ({id,title:id,description:'native',aliases:[],scope:'session',enabled:true,disabledReason:null,acceptsArgs,argsSchema:{type:'string'},metadata:{ui:{kind:'execute',acceptsMultiline:true,allowedStatuses:statuses}}})
 
 async function mount(t, child) {
@@ -76,18 +76,19 @@ test('an old command acknowledgement cannot clear or report against the newly se
 
 test('menu execution preserves resolved raw, clears unchanged source draft, and never model-sends',async t=>{
   const variants=[
-    {draft:'/',raw:'/compact'},
-    {draft:'/com',raw:'/compact'},
-    {draft:' /SHORT  ',raw:' /SHORT  '},
-    {draft:' /COMPACT  ',raw:' /COMPACT  '},
+    {draft:'/',raw:'/compact',menu:true},
+    {draft:'/com',raw:'/compact',menu:true},
+    {draft:' /SHORT  ',raw:' /SHORT  ',menu:false},
+    {draft:' /COMPACT  ',raw:' /COMPACT  ',menu:false},
   ]
   for(const variant of variants){
     let sent=0;const calls=[]
     function Host(){const [value,setValue]=useState(variant.draft);return h(SessionComposer,{token:'test',session,runtimeState:{status:'idle',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:capability,modelCatalog:null,permissionCatalog:null,runtimeCommands:[{...descriptor('compact',false),aliases:['short']}],onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>{sent++;return true},onInterrupt(){},onToggleTakeover(){},onCommand:async(id,payload)=>{calls.push({id,payload});return {ok:true,state:'completed',message:'done'}}})}
     const host=await mount(t,h(Host))
-    const menu=[...host.querySelectorAll('button')].find(button=>button.textContent.includes('/compact'))
-    assert.ok(menu,variant.draft)
-    await act(async()=>menu.click())
+    const menu=host.querySelector('[role=option]')
+    assert.equal(Boolean(menu),variant.menu,variant.draft)
+    if(menu) await act(async()=>menu.click())
+    else await act(async()=>host.querySelector('textarea').dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
     assert.deepEqual(calls.map(({id,payload})=>({id,raw:payload.raw})),[{id:'compact',raw:variant.raw}])
     assert.equal(host.querySelector('textarea').value,'',variant.draft)
     assert.equal(sent,0)
@@ -125,13 +126,17 @@ test('A to B to A invalidates command1 while command2 remains pending',async t=>
   assert.match(host.textContent,/new result/)
 })
 
-test('unknown slash and unsupported multiline never become a model prompt; native ok:false retains the draft',async t=>{
+test('slash text that is not a catalog command is sent as a message; unsupported multiline and native ok:false retain the draft',async t=>{
   let sent=0;let calls=0
   function Host(){const [value,setValue]=useState('/missing what');return h(SessionComposer,{token:'test',session,runtimeState:{status:'idle',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:capability,modelCatalog:null,permissionCatalog:null,runtimeCommands:[descriptor('compact',false)],onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>{sent++;return true},onInterrupt(){},onToggleTakeover(){},onCommand:async()=>{calls++;return {ok:false,state:'completed',code:'command_error',message:'native rejected',result:{executionState:'completed'}}}})}
   const host=await mount(t,h(Host));const input=host.querySelector('textarea')
   await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
-  assert.ok(host.querySelector('[role=alert]'))
-  assert.match(host.querySelector('[role=alert]').textContent,/Unknown command/)
+  assert.equal(sent,1)
+  assert.equal(host.querySelector('[role=alert]'),null)
+  await type(input,'/Users/me/notes.md explain this')
+  assert.equal(host.querySelector('[role=listbox]'),null)
+  await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
+  assert.equal(sent,2)
   await type(input,'/compact\ninvalid')
   await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
   assert.ok(host.querySelector('[role=alert]'))
@@ -142,7 +147,10 @@ test('unknown slash and unsupported multiline never become a model prompt; nativ
   assert.equal(calls,1)
   assert.equal(input.value,'/compact')
   assert.match(host.textContent,/native rejected/)
-  assert.equal(sent,0)
+  await act(async()=>host.querySelector('[aria-label=Dismiss]').click())
+  assert.doesNotMatch(host.textContent,/native rejected/)
+  assert.equal(input.value,'/compact')
+  assert.equal(sent,2)
 })
 
 test('read-only slash command remains unavailable while draft is intact',async t=>{
@@ -153,7 +161,54 @@ test('read-only slash command remains unavailable while draft is intact',async t
   assert.equal(executed,0)
   assert.equal(input.value,'/compact')
   assert.ok(host.querySelector('[role=alert]'))
-  assert.match(host.querySelector('[role=alert]').textContent,/unavailable/)
+  assert.match(host.querySelector('[role=alert]').textContent,/takeover/)
+})
+
+test('menu shows the block reason inline and keyboard selects, completes, runs and dismisses',async t=>{
+  const calls=[]
+  const commands=[descriptor('compact',false),descriptor('goal',true,['idle','running']),descriptor('config',false)]
+  function Host(){const [value,setValue]=useState('/');return h(SessionComposer,{token:'test',session,runtimeState:{status:'running',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:capability,modelCatalog:null,permissionCatalog:null,runtimeCommands:commands,onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>assert.fail('command is not a message'),onInterrupt(){},onToggleTakeover(){},onCommand:async(id,payload)=>{calls.push({id,raw:payload.raw});return {ok:true,state:'accepted',message:null}}})}
+  const host=await mount(t,h(Host));const input=host.querySelector('textarea')
+  const key=async name=>act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:name,bubbles:true})))
+  const options=()=>[...host.querySelectorAll('[role=option]')]
+  const selected=()=>options().find(option=>option.getAttribute('aria-selected')==='true')
+  assert.equal(options().length,3)
+  assert.match(options()[0].textContent,/busy/)
+  assert.equal(options()[0].getAttribute('aria-disabled'),'true')
+  assert.equal(input.getAttribute('aria-expanded'),'true')
+  await key('Enter')
+  assert.equal(calls.length,0,'a blocked command does not run')
+  await key('ArrowUp')
+  assert.match(selected().textContent,/\/config/)
+  await key('ArrowDown');await key('ArrowDown')
+  assert.match(selected().textContent,/\/goal/)
+  await key('Tab')
+  assert.equal(input.value,'/goal ')
+  assert.equal(host.querySelector('[role=listbox]'),null)
+  await type(input,'/go')
+  await key('Escape')
+  assert.equal(host.querySelector('[role=listbox]'),null)
+  assert.equal(input.value,'/go')
+  await type(input,'/goa')
+  assert.ok(host.querySelector('[role=listbox]'),'typing again reopens the menu')
+  await key('Enter')
+  assert.equal(input.value,'/goal ','an argument command completes instead of running')
+  await type(input,'/goal ship it')
+  await key('Enter')
+  assert.deepEqual(calls,[{id:'goal',raw:'/goal ship it'}])
+})
+
+test('successful command feedback hides itself',async t=>{
+  const realSetTimeout=window.setTimeout;const timers=[]
+  window.setTimeout=(fn,ms)=>{if(ms===5000){timers.push(fn);return 0}return realSetTimeout(fn,ms)}
+  t.after(()=>{window.setTimeout=realSetTimeout})
+  function Host(){const [value,setValue]=useState('/compact');return h(SessionComposer,{token:'test',session,runtimeState:{status:'idle',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:capability,modelCatalog:null,permissionCatalog:null,runtimeCommands:[descriptor('compact',false)],onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>true,onInterrupt(){},onToggleTakeover(){},onCommand:async()=>({ok:true,state:'completed',message:'compacted'})})}
+  const host=await mount(t,h(Host));const input=host.querySelector('textarea')
+  await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
+  assert.match(host.querySelector('[role=status]').textContent,/compacted/)
+  assert.ok(timers.length>0)
+  await act(async()=>timers.at(-1)())
+  assert.doesNotMatch(host.textContent,/compacted/)
 })
 
 test('selector command with no available native settings control reports unavailable without dispatch',async t=>{
