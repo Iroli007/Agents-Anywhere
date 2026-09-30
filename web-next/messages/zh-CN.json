@@ -1002,6 +1002,7 @@
       "commandBlocked_readOnly": "开启接管后才能执行指令",
       "commandBlocked_offline": "设备离线",
       "commandBlocked_unavailable": "此会话暂时无法使用指令",
+      "commandUnsupported": "当前 Runtime 版本还不支持指令，升级后可用",
       "approvalPending": "{count} 个确认请求待处理",
       "approvalPendingPlural": "{count} 个确认请求待处理",
       "interactionPending": "{count} 个交互待处理",

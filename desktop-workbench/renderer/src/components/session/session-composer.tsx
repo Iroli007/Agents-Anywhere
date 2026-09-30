@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { ArrowUp, Check, ChevronDown, Loader2, Square, X } from "lucide-react"
+import { toast } from "sonner"
 
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -149,12 +150,6 @@ export function SessionComposer({
     activeCommandRequestRef.current = null
     return () => { activeCommandRequestRef.current = null }
   }, [session.id])
-  React.useEffect(() => {
-    // Success is also visible in the timeline; only failures stay until dismissed.
-    if (!commandFeedback?.ok) return
-    const timer = window.setTimeout(() => setCommandFeedback((current) => (current === commandFeedback ? null : current)), 5000)
-    return () => window.clearTimeout(timer)
-  }, [commandFeedback])
   const composerWidth = useElementWidth(composerRef)
   const runtimeStatus = effectiveRuntimeStatus(runtimeState, session)
   const runtimeSelections = runtimeState?.selections ?? {}
@@ -380,6 +375,18 @@ export function SessionComposer({
     () => (commandQuery === null ? [] : runtimeCommands.filter((command) => commandMatchesQuery(command, commandQuery))),
     [commandQuery, runtimeCommands],
   )
+  // A bare "/" in a session that cannot run commands explains why instead of
+  // doing nothing, e.g. a runtime or bridge that predates native commands.
+  const commandsCapability = findCapability(effectiveCapabilities, CAPABILITY.commands, runtimeScope)
+  const commandsUnavailable =
+    commandsCapability !== null && !catalogUsable && slashCandidate?.command === "" && slashCandidate.suffix === ""
+      ? !connectorOnline
+        ? tSession("commandBlocked_offline")
+        : !commandsCapability.supported
+          ? tSession("commandUnsupported")
+          : commandsCapability.unavailableReason || tSession("commandBlocked_unavailable")
+      : null
+  const showUnavailableMenu = commandsUnavailable !== null && attachments.length === 0 && menuDismissedFor !== value
   const showCommandMenu =
     slashCandidate !== null &&
     catalogUsable &&
@@ -470,8 +477,15 @@ export function SessionComposer({
     try {
       const outcome = await onCommand(command.id, { args: request.args, raw: request.raw })
       if (!isCurrentRequest()) return
-      setCommandFeedback(outcome)
-      setResultExpanded(false)
+      if (outcome.ok) {
+        // Success is transient (and also shows in the timeline); only failures stay inline until dismissed.
+        toast.success(tSession(outcome.state === "completed" ? "commandCompleted" : "commandAccepted"), {
+          description: outcome.message ? (outcome.message.length > 200 ? `${outcome.message.slice(0, 200)}…` : outcome.message) : undefined,
+        })
+      } else {
+        setCommandFeedback(outcome)
+        setResultExpanded(false)
+      }
       if (outcome.ok && valueRef.current === sourceDraft) updateValue("")
     } catch (error) {
       if (isCurrentRequest()) {
@@ -529,7 +543,7 @@ export function SessionComposer({
     >
       <DragOverlay isDragging={isDragging} />
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-2">
-        {commandFeedback && !commandFeedback.ok ? (
+        {commandFeedback ? (
           <Alert variant="destructive" role="alert" className="pr-10">
             <AlertDescription>
               <span>{tSession(commandFeedback.state === "unknown" ? "commandUnknownOutcome" : "commandFailed")}</span>
@@ -553,6 +567,14 @@ export function SessionComposer({
             isDragging && "border-primary bg-primary/5",
           )}
         >
+          {showUnavailableMenu ? (
+            <div
+              role="status"
+              className="absolute inset-x-0 bottom-full z-30 mb-2 rounded-xl border border-border bg-popover px-3 py-2 text-xs text-muted-foreground shadow-lg"
+            >
+              {commandsUnavailable}
+            </div>
+          ) : null}
           {showCommandMenu ? (
             <div
               id={commandMenuId}
@@ -610,15 +632,6 @@ export function SessionComposer({
             <AttachmentPreviewList attachments={attachments} onRemove={remove} />
             {attachmentError ? <p role="alert" className="text-xs text-destructive">{attachmentError}</p> : null}
             {commandInputError ? <p role="alert" className="text-xs text-destructive">{commandInputError}</p> : null}
-            {commandFeedback?.ok ? (
-              <p role="status" className="flex items-start gap-1.5 text-xs text-muted-foreground">
-                <Check className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                <span className="min-w-0 whitespace-pre-wrap break-words">
-                  {tSession(commandFeedback.state === "completed" ? "commandCompleted" : "commandAccepted")}
-                  {commandFeedback.message ? ` ${commandFeedback.message.length > 200 ? `${commandFeedback.message.slice(0, 200)}…` : commandFeedback.message}` : null}
-                </span>
-              </p>
-            ) : null}
             <Textarea
               ref={textareaRef}
               value={value}
@@ -630,7 +643,7 @@ export function SessionComposer({
               aria-activedescendant={showCommandMenu && highlightedCommand ? `${commandMenuId}-${commandSuggestions.indexOf(highlightedCommand)}` : undefined}
               onKeyDown={(event) => {
                 if (event.nativeEvent.isComposing) return
-                if (showCommandMenu && event.key === "Escape") {
+                if ((showCommandMenu || showUnavailableMenu) && event.key === "Escape") {
                   event.preventDefault()
                   setMenuDismissedFor(value)
                   return
