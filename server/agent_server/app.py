@@ -38,7 +38,6 @@ from agent_server.api import (
     sessions_fs,
     sessions_terminal,
     shares,
-    sidebar_order,
 )
 from agent_server.core.api_namespace import API_V2_PREFIX
 from agent_server.core.process_settings import ProcessSettings
@@ -355,7 +354,6 @@ def create_app(
     app.include_router(sessions.router, prefix=API_V2_PREFIX)
     app.include_router(sessions_fs.router, prefix=API_V2_PREFIX)
     app.include_router(sessions_terminal.router, prefix=API_V2_PREFIX)
-    app.include_router(sidebar_order.router, prefix=API_V2_PREFIX)
 
     static_dir = os.environ.get("AGENT_SERVER_STATIC_DIR")
     if static_dir:

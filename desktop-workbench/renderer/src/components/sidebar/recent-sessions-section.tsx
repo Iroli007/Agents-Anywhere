@@ -81,7 +81,6 @@ export function RecentSessionsSection({
                     item={item}
                     previousConnectorId={sessions[index - 1]?.connectorId}
                     meta={sessionMeta?.(item) ?? null}
-                    reorderGroup="recent-sessions"
                     isActive={activeSessionId === item.id}
                     onOpen={() => onOpenSession(item.id)}
                     onTogglePin={() => onToggleSessionPin(item.id)}

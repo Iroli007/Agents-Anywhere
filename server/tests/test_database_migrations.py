@@ -1125,9 +1125,29 @@ def test_unversioned_runtime_schema_is_classified_by_actual_columns(
     )
 
 
-def test_current_schema_version_is_v2_40() -> None:
-    assert CURRENT_SCHEMA_REVISION == "v2_40"
-    assert CURRENT_SCHEMA_VERSION == "2.40"
+def test_current_schema_version_is_v2_41() -> None:
+    assert CURRENT_SCHEMA_REVISION == "v2_41"
+    assert CURRENT_SCHEMA_VERSION == "2.41"
+
+
+def test_v2_41_drops_the_sidebar_order_table(tmp_path) -> None:
+    path = tmp_path / "sidebar-order.sqlite3"
+    url = _sqlite_url(path)
+    upgrade_database(db_url=url, revision="v2_40")
+    engine = create_engine(f"sqlite:///{path}")
+    try:
+        assert inspect(engine).has_table("user_sidebar_orders")
+    finally:
+        engine.dispose()
+
+    upgrade_database(db_url=url)
+    upgrade_database(db_url=url)
+
+    engine = create_engine(f"sqlite:///{path}")
+    try:
+        assert not inspect(engine).has_table("user_sidebar_orders")
+    finally:
+        engine.dispose()
 
 
 def test_v2_40_removes_auto_archive_and_restores_swept_sessions(tmp_path) -> None:
