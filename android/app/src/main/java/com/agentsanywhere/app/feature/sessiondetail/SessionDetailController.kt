@@ -425,41 +425,6 @@ class SessionDetailController(
         attachments: List<UploadFilePart> = emptyList(),
         uploadedAttachments: List<TimelineAttachment> = emptyList(),
     ): Result<SendMessageResult> {
-        return performMessageAction(
-            sessionId = sessionId,
-            content = content,
-            clientMessageId = clientMessageId,
-            attachments = attachments,
-            uploadedAttachments = uploadedAttachments,
-            steer = false,
-        )
-    }
-
-    suspend fun steer(
-        sessionId: String,
-        content: String,
-        clientMessageId: String,
-        attachments: List<UploadFilePart> = emptyList(),
-        uploadedAttachments: List<TimelineAttachment> = emptyList(),
-    ): Result<SendMessageResult> {
-        return performMessageAction(
-            sessionId = sessionId,
-            content = content,
-            clientMessageId = clientMessageId,
-            attachments = attachments,
-            uploadedAttachments = uploadedAttachments,
-            steer = true,
-        )
-    }
-
-    private suspend fun performMessageAction(
-        sessionId: String,
-        content: String,
-        clientMessageId: String,
-        attachments: List<UploadFilePart>,
-        uploadedAttachments: List<TimelineAttachment>,
-        steer: Boolean,
-    ): Result<SendMessageResult> {
         return withContext(Dispatchers.IO) {
             runCatching {
                 val auth = authSession()
@@ -470,25 +435,14 @@ class SessionDetailController(
                 } else {
                     attachmentTransfer.upload(auth.serverUrl, auth.accessToken, sessionId, attachments)
                 }
-                val response = if (steer) {
-                    sessionsApi.steerSession(
-                        serverUrl = auth.serverUrl,
-                        authorizationToken = auth.accessToken,
-                        sessionId = sessionId,
-                        content = content,
-                        clientMessageId = clientMessageId,
-                        attachments = uploaded.map { it.toRemoteAttachmentRef() },
-                    )
-                } else {
-                    sessionsApi.sendSessionMessage(
-                        serverUrl = auth.serverUrl,
-                        authorizationToken = auth.accessToken,
-                        sessionId = sessionId,
-                        content = content,
-                        clientMessageId = clientMessageId,
-                        attachments = uploaded.map { it.toRemoteAttachmentRef() },
-                    )
-                }
+                val response = sessionsApi.sendSessionMessage(
+                    serverUrl = auth.serverUrl,
+                    authorizationToken = auth.accessToken,
+                    sessionId = sessionId,
+                    content = content,
+                    clientMessageId = clientMessageId,
+                    attachments = uploaded.map { it.toRemoteAttachmentRef() },
+                )
                 if (!response.ok) {
                     throw IllegalStateException(response.failureMessage("Runtime rejected the message."))
                 }
@@ -741,7 +695,6 @@ class SessionDetailController(
         text: String,
         clientMessageId: String,
         attachments: List<TimelineAttachment> = emptyList(),
-        retryAction: RuntimeMessageAction? = null,
     ): SessionDetailState {
         val lastOrderSeq = maxOf(
             state.timeline.orderingItems.maxOfOrNull { it.orderSeq } ?: 0,
@@ -760,7 +713,6 @@ class SessionDetailController(
             updatedSeq = optimisticOrderSeq,
             clientMessageId = clientMessageId,
             optimistic = true,
-            retryAction = retryAction,
         )
         optimisticStore.upsert(sessionId, message)
         return state.copy(
