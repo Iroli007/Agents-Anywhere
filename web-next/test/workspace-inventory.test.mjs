@@ -153,21 +153,6 @@ test('archived settings read the shared inventory without a separate list reques
   assert.equal(view.calls.pages, 0)
   assert.equal(view.calls.inventory, 0)
 })
-test('the archived list distinguishes the sweeper from the user', async (t) => {
-  // A session the user never archived has to say so, or the list looks like
-  // something silently threw work away.
-  const view = await render(t, { archives: true })
-  await view.emit(snapshot([project()], [
-    session('by-hand', 'p1', { archived: true, archivedAt: time, userArchived: true }),
-    session('by-sweeper', 'p1', { archived: true, archivedAt: time, userArchived: false, autoArchived: true }),
-  ]))
-  const rows = [...view.container.querySelectorAll('div')].filter(node => node.textContent.includes('Session by-'))
-  const sweeperRow = rows.find(node => node.textContent.includes('Session by-sweeper') && !node.textContent.includes('Session by-hand'))
-  const manualRow = rows.find(node => node.textContent.includes('Session by-hand') && !node.textContent.includes('Session by-sweeper'))
-  assert.ok(sweeperRow && manualRow, 'Expected one row per archived session')
-  assert.match(sweeperRow.textContent, /自动归档/)
-  assert.doesNotMatch(manualRow.textContent, /自动归档/)
-})
 test('a late full inventory cannot undo a completed project edit', async (t) => {
   const view = await render(t); await view.emit(snapshot())
   let finish

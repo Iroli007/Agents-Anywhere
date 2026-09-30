@@ -4,10 +4,6 @@ import type { WorkspaceSessionView } from "@/components/workspace-context"
  * How many recent sessions the sidebar renders before collapsing the rest
  * behind a "show more" row.
  *
- * Auto-archiving handles sessions that are *old*; this handles sessions that
- * are merely *many*. A user with 300 active sessions has none of them old
- * enough to archive, and still cannot find anything in the list.
- *
  * The rest are hidden behind a button rather than dropped, because a list that
  * silently stops at N is indistinguishable from data loss — the complaint
  * Codex users filed against exactly this behaviour (openai/codex#23246).
