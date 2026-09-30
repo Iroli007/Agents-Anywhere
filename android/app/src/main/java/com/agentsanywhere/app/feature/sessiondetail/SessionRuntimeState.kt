@@ -348,21 +348,7 @@ data class RuntimeCommand(
     val acceptsArgs: Boolean,
     val argsSchema: Map<String, Any?>?,
     val metadata: Map<String, Any?>,
-) {
-    fun matches(query: String): Boolean {
-        val tokens = query.trim().lowercase().split(Regex("\\s+")).filter(String::isNotBlank)
-        if (tokens.isEmpty()) return true
-        val haystack = buildString {
-            append(id.lowercase())
-            append(' ')
-            append(title.lowercase())
-            append(' ')
-            append(aliases.joinToString(" ").lowercase())
-            description?.let { append(' ').append(it.lowercase()) }
-        }
-        return tokens.all { it in haystack }
-    }
-}
+)
 
 data class RuntimeSelectionOption(
     val selectionId: String,
