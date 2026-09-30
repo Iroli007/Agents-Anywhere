@@ -161,9 +161,15 @@
     "Server": "common.server",
     "Server URL": "dashboard.pairDevice.serverAddress",
     "Session ID": "dashboard.session.sessionId",
-    "Session actions": "dashboard.actions.sessionOptions",
     "Sessions": "common.sessions",
     "Settings": "pages.settings.title",
+    "Show all %lld more": {
+      "source": "dashboard.device.showAllMore",
+      "arguments": {
+        "count": "lld"
+      }
+    },
+    "Show less": "dashboard.device.showLess",
     "Sign out": "common.actions.signOut",
     "Sign out?": "common.signOut.title",
     "System": "pages.settings.autoDescription",
@@ -201,6 +207,7 @@
     "dashboard.device.customEffortDisplayName": "dashboard.device.customEffortDisplayName",
     "dashboard.device.hideModelGatewayApiKey": "dashboard.device.hideModelGatewayApiKey",
     "dashboard.device.runtimeNamePlaceholder": "dashboard.device.runtimeNamePlaceholder",
+    "dashboard.device.runtimeNotStarted": "dashboard.device.runtimeNotStarted",
     "dashboard.device.runtimeStatus.available": "dashboard.device.runtimeStatus.available",
     "dashboard.device.runtimeStatus.discovering": "dashboard.device.runtimeStatus.discovering",
     "dashboard.device.runtimeStatus.error": "dashboard.device.runtimeStatus.error",
