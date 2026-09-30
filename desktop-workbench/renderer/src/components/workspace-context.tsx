@@ -23,9 +23,12 @@ import type {
   SessionLocalTimelineState,
   SessionRuntimeState,
   SessionView as RealSessionView,
+  SidebarOrder,
+  SidebarOrderKind,
   TimelineItem,
   AttachmentRef,
 } from "@/features/dashboard/types"
+import { EMPTY_SIDEBAR_ORDER } from "@/components/sidebar/sidebar-manual-order"
 import {
   isOptimisticTimelineItem,
   markOptimisticItemFailed,
@@ -236,6 +239,7 @@ function mapSession(session: RealSessionView): SessionView {
     lastItemAt: session.lastItemAt,
     lastItemOrderSeq: session.lastItemOrderSeq,
     sortAt: session.sortAt,
+    createdAt: session.createdAt ?? null,
     updatedSeq: session.updatedSeq,
     effectiveRunMode: session.effectiveRunMode,
     runtimeSettings: session.runtimeSettings ?? null,
@@ -325,6 +329,8 @@ export type WorkspaceState = {
   projects: ProjectView[]
   /** Live runtime instances from the dashboard snapshot, for device pages. */
   runtimes: DeviceRuntimeView[]
+  /** The user's dragged sidebar order, stored on the server and shared across devices. */
+  sidebarOrder: SidebarOrder
   isLoading: boolean
   routeReady: boolean
 
@@ -370,6 +376,8 @@ export type WorkspaceState = {
   setSearch: (q: string) => void
   setSidebarShowsSessions: (show: boolean) => void
   setSidebarCompactSessions: (compact: boolean) => void
+  /** Replace one kind's order with the full id list as displayed after a drag. */
+  saveSidebarOrder: (kind: SidebarOrderKind, ids: string[]) => void
   setPanelMode: (id: PanelId, mode: PanelMode) => void
   toggleCollapse: (id: PanelId) => void
   dismissPopupBlocked: () => void
@@ -500,6 +508,9 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
   const [sessions, setSessions] = React.useState<SessionView[]>([])
   const [projects, setProjects] = React.useState<ProjectView[]>([])
   const [runtimes, setRuntimes] = React.useState<DeviceRuntimeView[]>([])
+  const [sidebarOrder, setSidebarOrder] = React.useState<SidebarOrder>(EMPTY_SIDEBAR_ORDER)
+  // Drags still being saved; snapshots taken before they land would undo them on screen.
+  const sidebarOrderWritesRef = React.useRef(0)
   const [isLoading, setIsLoading] = React.useState(true)
   const sessionStreamSeqRef = React.useRef(new Map<string, number>())
   const pendingSessionIndicatorRef = React.useRef(new Map<string, SessionView>())
@@ -679,6 +690,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
       projects: message.projects,
       sessions: message.sessions,
       runtimes: message.runtimes ?? [],
+      sidebarOrder: message.sidebarOrder ?? null,
     })
     if (lastDashboardSnapshotKeyRef.current === snapshotKey) return
     lastDashboardSnapshotKeyRef.current = snapshotKey
@@ -691,6 +703,10 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setConnectors((current) => sameStableValue(current, nextConnectors) ? current : nextConnectors)
     setProjects((current) => sameStableValue(current, nextProjects) ? current : nextProjects)
     setRuntimes((current) => sameStableValue(current, nextRuntimes) ? current : nextRuntimes)
+    const nextSidebarOrder = message.sidebarOrder
+    if (nextSidebarOrder && sidebarOrderWritesRef.current === 0) {
+      setSidebarOrder((current) => sameStableValue(current, nextSidebarOrder) ? current : nextSidebarOrder)
+    }
     setSessions((current) => {
       const currentById = new Map(current.map((session) => [session.id, session]))
       const next = sortSessions(message.sessions.map((session) => {
@@ -719,10 +735,12 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     const promise = (async () => {
       try {
         if (token) {
-          const [connRes, projectRes, sessionRes] = await Promise.all([
+          const [connRes, projectRes, sessionRes, sidebarOrderRes] = await Promise.all([
             dashboardApi.listConnectors(token),
             dashboardApi.listProjects(token),
             dashboardApi.listSessionInventory(token),
+            // A server without this endpoint still loads; the sidebar then uses creation order.
+            dashboardApi.getSidebarOrder(token).catch(() => null),
           ])
           if (
             dashboardDataGenerationRef.current !== requestGeneration ||
@@ -733,6 +751,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
             connectors: connRes.connectors,
             projects: projectRes.projects,
             sessions: sessionRes.sessions,
+            sidebarOrder: sidebarOrderRes?.sidebarOrder,
             sessionPages: { active: { hasMore: false, nextCursor: null }, archived: { hasMore: false, nextCursor: null } },
             serverTime: sessionRes.serverTime,
           })
@@ -767,6 +786,22 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setSidebarCompactSessionsState(compact)
     writeStoredSidebarCompactSessions(compact)
   }, [])
+  const saveSidebarOrder = React.useCallback((kind: SidebarOrderKind, ids: string[]) => {
+    setSidebarOrder((current) => ({ ...current, [kind]: ids }))
+    const token = authSession?.accessToken
+    if (!token) return
+    sidebarOrderWritesRef.current += 1
+    void dashboardApi.updateSidebarOrder(token, kind, ids).then(
+      () => { sidebarOrderWritesRef.current -= 1 },
+      () => {
+        sidebarOrderWritesRef.current -= 1
+        if (sidebarOrderWritesRef.current > 0 || currentAccessTokenRef.current !== token) return
+        // The drag was not saved: reload so the sidebar shows the stored order again.
+        lastDashboardSnapshotKeyRef.current = null
+        void fetchData().catch(() => undefined)
+      },
+    )
+  }, [authSession?.accessToken, fetchData])
 
   React.useEffect(() => {
     initialLoadDoneRef.current = false
@@ -778,6 +813,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     pendingSessionIndicatorRef.current = new Map()
     setProjects([])
     setSessions([])
+    setSidebarOrder(EMPTY_SIDEBAR_ORDER)
     setIsLoading(true)
   }, [authSession?.accessToken])
 
@@ -1526,6 +1562,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     sessions,
     projects,
     runtimes,
+    sidebarOrder,
     isLoading,
     routeReady,
     page,
@@ -1562,6 +1599,7 @@ export function WorkspaceProvider({ children }: { children: React.ReactNode }) {
     setSearch,
     setSidebarShowsSessions,
     setSidebarCompactSessions,
+    saveSidebarOrder,
     setPanelMode,
     toggleCollapse,
     dismissPopupBlocked,
