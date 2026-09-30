@@ -33,7 +33,7 @@
 | --- | --- |
 | **macOS** | [Universal DMG · 2.0.3](https://modelscope.cn/models/t4wefan/deepseek-harness-desktop/resolve/master/Agents%20Anywhere-2.0.3-universal.dmg) |
 | **Windows** | [x64 安装包 · 2.0.3](https://modelscope.cn/models/t4wefan/deepseek-harness-desktop/resolve/master/Agents%20Anywhere%20Setup%202.0.3.exe) |
-| **iOS / iPadOS** | [在 App Store 下载](https://apps.apple.com/cn/app/agents-anywhere/id6787125178) |
+| **iOS / iPadOS** | [在 App Store 下载](https://apps.apple.com/cn/app/agents-anywhere/id6787125178) · [加入 TestFlight](https://testflight.apple.com/join/GKGaut99) |
 | **Android** | [APK · 2.0.3](https://modelscope.cn/models/t4wefan/deepseek-harness-desktop/resolve/master/agents-anywhere-2.0.3-release.apk) |
 | **Web** | [立即打开 Web](https://web.agents-anywhere.com) |
 | **Linux / headless** | [运行 Connector CLI](connector/README.md) |
@@ -46,7 +46,7 @@
 - macOS：Apple Silicon / Intel 通用，已签名、公证；需要 macOS 12 及以上。
 - Windows：x64 桌面工作台，含本机 Connector；当前安装包未做代码签名。
 - Android：Android 8.0 及以上。
-- iOS / iPadOS：在 App Store 下载安装。
+- iOS / iPadOS：在 App Store 下载安装；也可以通过 TestFlight 安装测试版，以邀请页显示的可用状态为准。
 - Linux / headless：运行 Connector 接入工作设备，通过其他客户端操作。
 
 macOS、Windows 和 Android 的下载文件均为 **Agents Anywhere** 安装包，托管在 ModelScope 的 `t4wefan/deepseek-harness-desktop` 仓库中，同样的文件也发布在 GitHub 的 [v2.0.3 Release](https://github.com/anywhere-labs/Agents-Anywhere/releases/tag/v2.0.3)。历史 GitHub Releases 中的 0.1.x 安装包不作为 2.0 下载入口。当前发布客户端的应用内更新地址仍是占位配置，请通过上面的链接手动下载。
