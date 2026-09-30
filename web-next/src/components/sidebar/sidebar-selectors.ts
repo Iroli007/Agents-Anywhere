@@ -1,6 +1,7 @@
 import type { WorkspaceSessionView } from "@/components/workspace-context"
 import type { ProjectView } from "@/features/dashboard/types"
 import { filterSessions, type FilterValue } from "@/lib/demo-api"
+import { sortProjectsBySessionActivity } from "./project-list-order"
 import { filterProjectSessions, type DeviceAgentFilter } from "./project-identity"
 import {
   projectHasVisibleSessions,
@@ -11,7 +12,7 @@ import {
 export type { ProjectSessionStatusFilter } from "./project-visibility"
 
 export function sortSidebarSessions(items: WorkspaceSessionView[]): WorkspaceSessionView[] {
-  // The caller passes sessions already in the user's manual sidebar order.
+  // WorkspaceContext owns the presentation order, including optimistic sends.
   return [...items]
 }
 
@@ -21,10 +22,12 @@ export function selectPinnedProjects(
   status: ProjectSessionStatusFilter,
   filter?: DeviceAgentFilter | null,
 ): ProjectView[] {
-  // The caller passes projects already in the user's manual sidebar order.
-  return projects.filter((project) => (
-    project.pinned && projectHasVisibleSessions(project, sessions, status, filter)
-  ))
+  return sortProjectsBySessionActivity(
+    projects.filter((project) => (
+      project.pinned && projectHasVisibleSessions(project, sessions, status, filter)
+    )),
+    sessions,
+  )
 }
 
 export function selectRegularProjects(
@@ -33,9 +36,12 @@ export function selectRegularProjects(
   status: ProjectSessionStatusFilter,
   filter?: DeviceAgentFilter | null,
 ): ProjectView[] {
-  return projects.filter((project) => (
-    !project.pinned && projectHasVisibleSessions(project, sessions, status, filter)
-  ))
+  return sortProjectsBySessionActivity(
+    projects.filter((project) => (
+      !project.pinned && projectHasVisibleSessions(project, sessions, status, filter)
+    )),
+    sessions,
+  )
 }
 
 export function selectPinnedSessions(

@@ -45,7 +45,6 @@ export type SessionView = {
   pinned: boolean
   pinnedAt?: string | null
   archived: boolean
-  autoArchived?: boolean
   archivedAt?: string | null
   userArchived?: boolean
   sourceAvailability?: "available" | "archived" | "unavailable" | "deleted" | "missing" | "unknown"
@@ -62,7 +61,6 @@ export type SessionView = {
   lastItemAt?: string | null
   lastItemOrderSeq?: number | null
   sortAt?: string | null
-  createdAt?: string | null
   updatedSeq: number
   effectiveRunMode?: "chat" | "terminal" | null
   runtimeSettings?: Record<string, unknown> | null

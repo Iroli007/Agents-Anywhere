@@ -69,7 +69,6 @@ export type SessionView = {
   archived: boolean
   archivedAt?: string | null
   userArchived?: boolean
-  autoArchived?: boolean
   sourceAvailability?: "available" | "archived" | "unavailable" | "deleted" | "missing" | "unknown"
   sourceAvailabilityReason?: string | null
   sourceAvailabilityUpdatedAt?: string | null
@@ -84,7 +83,6 @@ export type SessionView = {
   lastItemAt?: string | null
   lastItemOrderSeq?: number | null
   sortAt?: string | null
-  createdAt?: string | null
   updatedSeq: number
   effectiveRunMode?: "chat" | "terminal" | null
   runtimeSettings?: Record<string, unknown> | null

@@ -767,10 +767,6 @@ export function TaskComposer() {
       lastItemAt: now,
       lastItemOrderSeq: 1,
       sortAt: now,
-      // The manual sidebar order puts sessions nobody has dragged yet first,
-      // newest created first; without this the new row sorts last until
-      // the server's copy replaces it.
-      createdAt: now,
       updatedSeq: 1,
       effectiveRunMode: "chat",
     }

@@ -53,7 +53,6 @@ async def _dashboard_snapshot(
         sessions,
     )
     runtimes = await db.list_user_device_runtimes(user_id=user_id)
-    sidebar_order = await db.get_sidebar_order(user_id=user_id)
     return {
         "type": "dashboard.snapshot",
         "connectors": [
@@ -77,8 +76,6 @@ async def _dashboard_snapshot(
             )
             for row in runtimes
         ],
-        # Manual sidebar order, so a drag on one device reaches the others.
-        "sidebarOrder": sidebar_order.model_dump(mode="json"),
         "sessionPages": {
             "active": {
                 "hasMore": False,
