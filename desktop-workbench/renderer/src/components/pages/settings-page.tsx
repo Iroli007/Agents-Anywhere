@@ -321,6 +321,7 @@ function DesktopTab() {
   })
   const [advancedDraft, setAdvancedDraft] = React.useState({
     uvPath: "",
+    pythonPath: "",
     uvPypiIndexUrl: "",
     uvPythonInstallMirror: "",
   })
@@ -353,10 +354,11 @@ function DesktopTab() {
   React.useEffect(() => {
     setAdvancedDraft({
       uvPath: state?.uvPath ?? "",
+      pythonPath: state?.pythonPath ?? "",
       uvPypiIndexUrl: state?.uvPypiIndexUrl ?? "",
       uvPythonInstallMirror: state?.uvPythonInstallMirror ?? "",
     })
-  }, [state?.uvPath, state?.uvPypiIndexUrl, state?.uvPythonInstallMirror])
+  }, [state?.uvPath, state?.pythonPath, state?.uvPypiIndexUrl, state?.uvPythonInstallMirror])
 
   const loadConnectorConfig = React.useCallback(async () => {
     const bridge = getDesktopWorkbenchBridge()
@@ -523,6 +525,20 @@ function DesktopTab() {
             <span className="w-36 shrink-0 text-sm text-muted-foreground">{t("desktopResolvedUvPath")}</span>
             <span className="code-mono min-w-0 truncate text-sm">{state?.resolvedUvPath || t("desktopUvNotFound")}</span>
           </div>
+          <Field className="border-t border-border py-4">
+            <span className="text-sm font-medium">{t("desktopPythonPath")}</span>
+            <Input
+              value={advancedDraft.pythonPath}
+              placeholder={state?.resolvedPythonPath || t("desktopPythonPathAuto")}
+              onChange={(event) => setAdvancedDraft((current) => ({ ...current, pythonPath: event.currentTarget.value }))}
+              onBlur={(event) => void saveSettings({ pythonPath: event.currentTarget.value })}
+            />
+            <span className="text-xs text-muted-foreground">{t("desktopPythonPathDescription")}</span>
+          </Field>
+          <div className="flex min-w-0 items-center gap-4 border-t border-border py-4">
+            <span className="w-36 shrink-0 text-sm text-muted-foreground">{t("desktopResolvedPythonPath")}</span>
+            <span className="code-mono min-w-0 truncate text-sm">{state?.resolvedPythonPath || t("desktopPythonChosenByUv")}</span>
+          </div>
           <Field orientation="horizontal" className="border-t border-border py-4">
             <FieldContent>
               <span className="text-sm font-medium">{t("desktopUvPypiIndexUrl")}</span>
@@ -551,34 +567,37 @@ function DesktopTab() {
               </SelectContent>
             </Select>
           </Field>
-          <Field orientation="horizontal" className="border-t border-border py-4">
-            <FieldContent>
-              <span className="text-sm font-medium">{t("desktopUvPythonInstallMirror")}</span>
-              <span className="text-xs text-muted-foreground">{t("desktopUvPythonInstallMirrorDescription")}</span>
-            </FieldContent>
-            <Select
-              value={selectedPythonMirror.url || "default"}
-              onValueChange={(value) => {
-                const uvPythonInstallMirror = value === "default" ? "" : value
-                setAdvancedDraft((current) => ({ ...current, uvPythonInstallMirror }))
-                void saveSettings({ uvPythonInstallMirror })
-              }}
-              disabled={busy}
-            >
-              <SelectTrigger className="min-w-44">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent align="end">
-                <SelectGroup>
-                  {PYTHON_MIRROR_OPTIONS.map((option) => (
-                    <SelectItem key={option.id} value={option.url || "default"}>
-                      {t(option.labelKey)}
-                    </SelectItem>
-                  ))}
-                </SelectGroup>
-              </SelectContent>
-            </Select>
-          </Field>
+          {/* uv only downloads Python when no bundled or saved interpreter is available. */}
+          {state?.resolvedPythonPath ? null : (
+            <Field orientation="horizontal" className="border-t border-border py-4">
+              <FieldContent>
+                <span className="text-sm font-medium">{t("desktopUvPythonInstallMirror")}</span>
+                <span className="text-xs text-muted-foreground">{t("desktopUvPythonInstallMirrorDescription")}</span>
+              </FieldContent>
+              <Select
+                value={selectedPythonMirror.url || "default"}
+                onValueChange={(value) => {
+                  const uvPythonInstallMirror = value === "default" ? "" : value
+                  setAdvancedDraft((current) => ({ ...current, uvPythonInstallMirror }))
+                  void saveSettings({ uvPythonInstallMirror })
+                }}
+                disabled={busy}
+              >
+                <SelectTrigger className="min-w-44">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent align="end">
+                  <SelectGroup>
+                    {PYTHON_MIRROR_OPTIONS.map((option) => (
+                      <SelectItem key={option.id} value={option.url || "default"}>
+                        {t(option.labelKey)}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
+            </Field>
+          )}
         </FieldGroup>
       </section>
 

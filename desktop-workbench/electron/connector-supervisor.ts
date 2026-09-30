@@ -2,6 +2,7 @@ import { localRuntimePath } from "./local-runtime";
 import type { OwnershipState } from "./local-runtime";
 import { ConnectorRpcError, CONNECTOR_CONFLICT_MESSAGE } from "./connector-rpc-error";
 import { materializeConnectorProject } from "./connector-project";
+import { bundledPythonExecutable, environmentHome, environmentUsesPython } from "./connector-python";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -27,10 +28,11 @@ type PendingRequest = {
 };
 
 /**
- * The first `uv run` on a machine without a project environment downloads
- * Python and every dependency before the Connector can answer anything, which
- * takes minutes on a cold cache. Normal RPCs stay fast, so only that first
- * request gets the long deadline.
+ * A `uv run` without a matching project environment builds one first,
+ * downloading every dependency (and, with no bundled Python, the interpreter)
+ * before the Connector can answer anything, which takes minutes on a cold
+ * cache. Normal RPCs stay fast, so only that first request gets the long
+ * deadline.
  */
 const FIRST_RUN_TIMEOUT_MS = 15 * 60_000;
 const DEFAULT_RPC_TIMEOUT_MS = 30_000;
@@ -45,6 +47,8 @@ type ConnectorSupervisorOptions = {
   resourcesPath: string;
   /** Directory holding `<platform>-<arch>/uv[.exe]`; packaged resources or `build/uv`. */
   uvBundleDir: string;
+  /** Directory holding `<platform>-<arch>/` CPython installs; packaged resources or `build/python`. */
+  pythonBundleDir: string;
   packaged: boolean;
   homePath: string;
   shellEnvironment: NodeJS.ProcessEnv;
@@ -97,6 +101,7 @@ export class ConnectorSupervisor {
       connectorDir: options.connectorDir,
       resolvedUvPath: "",
       uvMissing: false,
+      resolvedPythonPath: "",
       ...this.publicSettings(),
     };
     this.refreshLocalState();
@@ -111,6 +116,7 @@ export class ConnectorSupervisor {
     const current = this.options.settings.get();
     const launcherChanged =
       previous.uvPath !== current.uvPath ||
+      previous.pythonPath !== current.pythonPath ||
       previous.uvPypiIndexUrl !== current.uvPypiIndexUrl ||
       previous.uvPythonInstallMirror !== current.uvPythonInstallMirror;
     this.refreshLocalState();
@@ -424,7 +430,7 @@ export class ConnectorSupervisor {
       if (!line) continue;
       const plain = line.replace(/\u001b\[[0-9;]*m/g, "").trim();
       const match = plain.match(/\|\s*(TRACE|DEBUG|INFO|SUCCESS|WARNING|ERROR|CRITICAL)\s*\|/);
-      const uvMessage = /^(Using CPython|Creating virtual environment|Building |Built |Downloading |Downloaded |Installed |Resolved |Prepared |Audited )/.test(plain);
+      const uvMessage = /^(Using CPython|Creating virtual environment|Removed virtual environment|Building |Built |Downloading |Downloaded |Installed |Uninstalled |Resolved |Prepared |Audited )/.test(plain);
       this.log({ level: match?.[1] ?? (uvMessage ? "INFO" : "ERROR"), message: plain });
     }
   }
@@ -539,6 +545,7 @@ export class ConnectorSupervisor {
     if (direct) {
       this.state.uvMissing = false;
       this.state.resolvedUvPath = "";
+      this.state.resolvedPythonPath = "";
       return {
         executable: direct,
         args: ["rpc", "--config", this.options.configPath],
@@ -557,13 +564,17 @@ export class ConnectorSupervisor {
     }
     this.state.uvMissing = false;
     this.state.resolvedUvPath = uv;
+    const python = this.resolvePythonPath();
+    this.state.resolvedPythonPath = python;
     const projectDir = this.options.packaged && materialize
       ? this.projectDir ??= materializeConnectorProject(this.options.connectorDir, this.options.dataPath)
       : this.projectDir ?? this.options.connectorDir;
+    // An explicit interpreter keeps uv from choosing, or downloading, one itself.
+    const pythonArgs = python ? ["--python", python] : [];
     return {
       executable: uv,
-      args: ["run", "--project", projectDir, "anywhere-cli", "rpc", "--config", this.options.configPath],
-      description: `${uv} run --project ${projectDir}`,
+      args: ["run", "--project", projectDir, ...pythonArgs, "anywhere-cli", "rpc", "--config", this.options.configPath],
+      description: `${uv} run --project ${projectDir}${python ? ` --python ${python}` : ""}`,
     };
   }
 
@@ -586,20 +597,27 @@ export class ConnectorSupervisor {
 
   /**
    * Where `uv run --project` keeps this project's environment: the packaged
-   * app redirects it under `userData`, development uses the repo's `.venv`.
+   * app always forces it under `userData` (see `connectorEnvironment`),
+   * development uses `UV_PROJECT_ENVIRONMENT` or the repo's `.venv`.
    */
   private projectEnvironmentPath(): string {
+    if (this.options.packaged) return path.join(this.options.dataPath, ".venv");
     const configured = (this.shellEnvironment.UV_PROJECT_ENVIRONMENT ?? process.env.UV_PROJECT_ENVIRONMENT)?.trim();
-    if (configured) return configured;
-    return this.options.packaged
-      ? path.join(this.options.dataPath, ".venv")
-      : path.join(this.options.connectorDir, ".venv");
+    return configured || path.join(this.options.connectorDir, ".venv");
   }
 
-  /** A prebuilt connector binary runs directly and never syncs an environment. */
+  /**
+   * A prebuilt connector binary runs directly and never syncs an environment.
+   * Otherwise `uv run` builds the environment when there is none, and rebuilds
+   * it when another interpreter created it, e.g. the Python uv downloaded
+   * before this Desktop bundled one.
+   */
   private needsFirstRunProvisioning(): boolean {
     if (this.resolveDirectConnectorCli()) return false;
-    return !fs.existsSync(path.join(this.projectEnvironmentPath(), "pyvenv.cfg"));
+    const home = environmentHome(this.projectEnvironmentPath());
+    if (home === null) return true;
+    const python = this.resolvePythonPath();
+    return Boolean(python) && !environmentUsesPython(home, python);
   }
 
   private provisioningTimeoutMs(): number {
@@ -607,17 +625,20 @@ export class ConnectorSupervisor {
   }
 
   /**
-   * The first probe waits on `uv` installing Python and every dependency. Tell
-   * the host that this is progress, not failure, so it can show it instead of
-   * an error dialog.
+   * The first probe waits on `uv` installing every dependency (and, with no
+   * bundled Python, the interpreter). Tell the host that this is progress, not
+   * failure, so it can show it instead of an error dialog.
    */
   private announceFirstRun(): number {
     const timeoutMs = this.provisioningTimeoutMs();
     if (timeoutMs !== FIRST_RUN_TIMEOUT_MS) return timeoutMs;
     this.options.onOwnership?.({ status: "preparing" });
+    const python = this.resolvePythonPath();
     this.log({
       level: "INFO",
-      message: "First run: installing the Connector environment (Python and dependencies). This can take a few minutes.",
+      message: python
+        ? `Preparing the Connector environment for ${python}: installing dependencies. This can take a few minutes.`
+        : "First run: installing the Connector environment (Python and dependencies). This can take a few minutes.",
     });
     return timeoutMs;
   }
@@ -632,6 +653,20 @@ export class ConnectorSupervisor {
     const configured = this.options.settings.get().uvPath;
     const bundled = path.join(this.options.uvBundleDir, `${process.platform}-${process.arch}`, executableName);
     for (const candidate of [configured, bundled, executableName]) {
+      const resolved = this.resolveExecutable(candidate);
+      if (resolved) return resolved;
+    }
+    return "";
+  }
+
+  /**
+   * A saved `pythonPath` wins because it is an explicit user choice, then the
+   * bundled CPython. Empty lets uv pick an interpreter itself, downloading one
+   * when needed; only development without `yarn bundle:python` gets there.
+   */
+  private resolvePythonPath(): string {
+    const configured = this.options.settings.get().pythonPath;
+    for (const candidate of [configured, bundledPythonExecutable(this.options.pythonBundleDir)]) {
       const resolved = this.resolveExecutable(candidate);
       if (resolved) return resolved;
     }
@@ -667,7 +702,7 @@ export class ConnectorSupervisor {
       FORCE_COLOR: "0",
     };
     if (this.options.packaged) {
-      environment.UV_PROJECT_ENVIRONMENT = path.join(this.options.dataPath, ".venv");
+      environment.UV_PROJECT_ENVIRONMENT = this.projectEnvironmentPath();
       environment.UV_CACHE_DIR = path.join(this.options.dataPath, "uv-cache");
     }
     // Also make the official-index choice explicit: the bundled project or
@@ -677,7 +712,7 @@ export class ConnectorSupervisor {
     environment.UV_DEFAULT_INDEX = pypiIndexUrl;
     environment.UV_INDEX_URL = pypiIndexUrl;
     environment.PIP_INDEX_URL = pypiIndexUrl;
-    // uv downloads CPython itself on first run; the default is GitHub.
+    // Without a bundled or saved interpreter uv downloads CPython itself; the default is GitHub.
     environment.UV_PYTHON_INSTALL_MIRROR = settings.uvPythonInstallMirror || PYTHON_BUILDS_GITHUB;
     environment.UV_HTTP_TIMEOUT ||= UV_HTTP_TIMEOUT_SECONDS;
     if (process.platform === "win32") {
@@ -748,6 +783,7 @@ export class ConnectorSupervisor {
     | "silentLaunch"
     | "notificationsEnabled"
     | "uvPath"
+    | "pythonPath"
     | "uvPypiIndexUrl"
     | "uvPythonInstallMirror"
     | "logChunkSizeKb"
@@ -761,6 +797,7 @@ export class ConnectorSupervisor {
       silentLaunch: settings.silentLaunch,
       notificationsEnabled: settings.notificationsEnabled,
       uvPath: settings.uvPath,
+      pythonPath: settings.pythonPath,
       uvPypiIndexUrl: settings.uvPypiIndexUrl,
       uvPythonInstallMirror: settings.uvPythonInstallMirror,
       logChunkSizeKb: settings.logChunkSizeKb,

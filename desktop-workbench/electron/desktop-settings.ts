@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS: DesktopSettings = {
   silentLaunch: true,
   notificationsEnabled: true,
   uvPath: "",
+  pythonPath: "",
   uvPypiIndexUrl: "",
   uvPythonInstallMirror: "",
   logChunkSizeKb: 512,
@@ -61,6 +62,7 @@ function normalizeSettings(value: Partial<DesktopSettings>): DesktopSettings {
       DEFAULT_SETTINGS.notificationsEnabled,
     ),
     uvPath: typeof value.uvPath === "string" ? value.uvPath.trim() : DEFAULT_SETTINGS.uvPath,
+    pythonPath: typeof value.pythonPath === "string" ? value.pythonPath.trim() : DEFAULT_SETTINGS.pythonPath,
     uvPypiIndexUrl: typeof value.uvPypiIndexUrl === "string"
       ? value.uvPypiIndexUrl.trim()
       : DEFAULT_SETTINGS.uvPypiIndexUrl,
