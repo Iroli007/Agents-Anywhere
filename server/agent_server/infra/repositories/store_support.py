@@ -206,6 +206,16 @@ def _truncate_title(text: str) -> str:
     return f"{text[:DERIVED_SESSION_TITLE_MAX_CHARS].rstrip()}..."
 
 
+def _client_session_title(title: str | None) -> str | None:
+    # Web / Desktop send the whole first prompt as the create-time title.
+    # Normalize it like a derived title so a pasted document never becomes a
+    # multi-kilobyte session name (Codex never reports a replacement title).
+    if title is None:
+        return None
+    collapsed = " ".join(title.split())
+    return _truncate_title(collapsed) if collapsed else None
+
+
 def _manual_archive_values(*, archived: bool | int, now: str) -> dict[str, Any]:
     """Column values for a user-initiated session archive or unarchive.
 
