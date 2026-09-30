@@ -24,7 +24,8 @@
     "build": "yarn build:main && yarn build:web",
     "ensure:uv": "node scripts/ensure-uv.mjs",
     "bundle:uv": "node scripts/prepare-uv.mjs",
-    "pack": "yarn bundle:uv && yarn build && electron-builder --dir",
+    "bundle:python": "node scripts/prepare-python.mjs",
+    "pack": "yarn bundle:uv && yarn bundle:python && yarn build && electron-builder --dir",
     "dist": "node scripts/dist-desktop.mjs",
     "dist:mac": "node scripts/dist-desktop.mjs mac",
     "dist:win": "node scripts/dist-desktop.mjs win"
@@ -86,6 +87,13 @@
         "filter": [
           "**/*"
         ]
+      },
+      {
+        "from": "build/python",
+        "to": "python",
+        "filter": [
+          "**/*"
+        ]
       }
     ],
     "directories": {
@@ -122,9 +130,9 @@
           ]
         }
       ],
-      "x64ArchFiles": "{Contents/Resources/uv/darwin-*/uv,Contents/Resources/app.asar.unpacked/node_modules/{@img/sharp-darwin-*,@img/sharp-libvips-darwin-*,@next/swc-darwin-*,@swc/core-darwin-*,@parcel/watcher-darwin-*,@tailwindcss/oxide-darwin-*,lightningcss-darwin-*}/**}",
+      "x64ArchFiles": "{Contents/Resources/uv/darwin-*/uv,Contents/Resources/python/darwin-*/**,Contents/Resources/app.asar.unpacked/node_modules/{@img/sharp-darwin-*,@img/sharp-libvips-darwin-*,@next/swc-darwin-*,@swc/core-darwin-*,@parcel/watcher-darwin-*,@tailwindcss/oxide-darwin-*,lightningcss-darwin-*}/**}",
       "signIgnore": [
-        "\\.(?:pak|dat|wasm)$"
+        "\\.(?:pak|dat|wasm|pyc|pickle|whl)$"
       ]
     },
     "linux": {

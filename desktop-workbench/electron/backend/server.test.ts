@@ -12,6 +12,7 @@ const SETTINGS: DesktopSettings = {
   silentLaunch: true,
   notificationsEnabled: true,
   uvPath: "",
+  pythonPath: "",
   uvPypiIndexUrl: "",
   uvPythonInstallMirror: "",
   logChunkSizeKb: 512,

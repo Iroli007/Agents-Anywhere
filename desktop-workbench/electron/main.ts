@@ -539,6 +539,19 @@ function resolveUvBundleDir(): string {
   return path.join(app.getAppPath(), "build", "uv");
 }
 
+/**
+ * The CPython that packaging bundles, so the Connector never waits on uv
+ * downloading an interpreter. Development uses the same build output once
+ * `yarn bundle:python` has created it; until then uv picks an interpreter.
+ */
+function resolvePythonBundleDir(): string {
+  if (process.env.WORKBENCH_PYTHON_BUNDLE_DIR?.trim()) {
+    return path.resolve(process.env.WORKBENCH_PYTHON_BUNDLE_DIR.trim());
+  }
+  if (app.isPackaged) return path.join(process.resourcesPath, "python");
+  return path.join(app.getAppPath(), "build", "python");
+}
+
 function appWindowIcon(): string {
   if (app.isPackaged) return path.join(process.resourcesPath, "build", "icon-mac-source.png");
   return path.join(app.getAppPath(), "build", "icon-mac-source.png");
@@ -831,6 +844,7 @@ function backendInit(): BackendInit {
     connectorDir: resolveConnectorDir(),
     resourcesPath: process.resourcesPath,
     uvBundleDir: resolveUvBundleDir(),
+    pythonBundleDir: resolvePythonBundleDir(),
     homePath: app.getPath("home"),
     documentsPath: app.getPath("documents"),
     packaged: app.isPackaged,

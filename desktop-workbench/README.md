@@ -139,15 +139,29 @@ needed:
 WORKBENCH_CONNECTOR_DIR=/absolute/path/to/connector yarn dev
 WORKBENCH_CONNECTOR_CLI=/absolute/path/to/anywhere-cli yarn dev
 WORKBENCH_UV_BUNDLE_DIR=/absolute/path/to/uv-bundle yarn dev
+WORKBENCH_PYTHON_BUNDLE_DIR=/absolute/path/to/python-bundle yarn dev
 ```
 
-The first launch after that also runs `uv sync`, which downloads Python and every
-Connector dependency. The window shows a preparing screen while the ownership
-probe waits for it; that probe alone allows up to 15 minutes, while every later
-RPC keeps its 30-second deadline. The saved `uvPypiIndexUrl` mirror covers
+The Python interpreter is resolved as the saved `pythonPath` setting, then the
+bundled CPython at `build/python/<platform>-<arch>/` (`python.exe` on Windows,
+`bin/python3` elsewhere; packaged builds read `resources/python`). The result
+is passed to `uv run --python`, so uv neither searches for nor downloads an
+interpreter. Development does not download the bundle automatically: without
+`yarn bundle:python` (or a previous `yarn pack`), uv picks an interpreter
+itself and may download one. Once the bundle exists, development uses it too,
+and uv rebuilds the repo's `connector/.venv` on it once.
+
+The first launch after that also runs `uv sync`, which downloads every
+Connector dependency (and the interpreter, without a bundled one). The window
+shows a preparing screen while the ownership probe waits for it; that probe
+alone allows up to 15 minutes, while every later RPC keeps its 30-second
+deadline. The same applies when the existing environment was created by another
+interpreter, such as the Python uv downloaded before Desktop bundled one: uv
+replaces that environment. The saved `uvPypiIndexUrl` mirror covers
 package downloads through `UV_DEFAULT_INDEX`, `UV_INDEX_URL` and `PIP_INDEX_URL`.
 The saved `uvPythonInstallMirror` sets `UV_PYTHON_INSTALL_MIRROR` for the Python
-interpreter download (GitHub python-build-standalone when empty), and
+interpreter download (GitHub python-build-standalone when empty); it only
+matters without a bundled or saved interpreter, and Settings hides it otherwise.
 `UV_HTTP_TIMEOUT` defaults to 60 seconds.
 
 Do not start a second Connector with the same Desktop config while the app is
@@ -173,8 +187,9 @@ checks run headlessly without starting Electron or a development server.
 ## Packaging
 
 The release build bundles the Connector source (`pyproject.toml`, `README.md` and
-the `connector/` package only, like the DSH plugin; no `uv.lock`, tests or caches)
-and a platform-specific `uv`. Python and dependencies are installed on first run.
+the `connector/` package only, like the DSH plugin; no `uv.lock`, tests or caches),
+a platform-specific `uv`, and a platform-specific CPython. Dependencies are
+installed on first run; Python is never downloaded.
 The packaged app never runs `uv` inside its own bundle: it first mirrors the
 bundled source to `userData/connector-source/<content-hash>/` (as the DSH plugin
 does), so `uv.lock` is written there and the signed bundle stays untouched:
@@ -187,8 +202,8 @@ yarn pack                   # unpacked Electron application
 yarn dist                   # host-platform release (universal on macOS)
 ```
 
-`dist`, `dist:mac` and `dist:win` read the signing environment, run the `uv` bundle and
-the app build with those secrets stripped, and hand them to electron-builder
+`dist`, `dist:mac` and `dist:win` read the signing environment, run the `uv` and
+Python bundles and the app build with those secrets stripped, and hand them to electron-builder
 only. The signing material is therefore never visible to a build or test
 subprocess. Add `--arm64`, `--x64` or `--universal` (macOS) to select the
 architecture, or `--dir` for an unpacked build. `dist:mac` must run on macOS and
@@ -216,6 +231,20 @@ automatically. Packaged builds keep the Connector virtual environment, uv cache,
 config, binding, and logs under Electron `userData`; signed resources are never
 modified at runtime. `bundle:uv` verifies the upstream archive checksum before
 copying it into `build/uv`.
+
+`bundle:python` places a python-build-standalone CPython (`install_only_stripped`,
+version pinned in `scripts/prepare-python.mjs`) under `build/python/<platform>-<arch>/`,
+verified against the release's `SHA256SUMS` and cached under `.cache/python`.
+It removes what the Connector never loads (Tk/Tcl, IDLE, turtle demos, and the
+interpreter's own pip) and ships CPython's license under `THIRD_PARTY_LICENSES`.
+`PYTHON_BUNDLE_TARGETS` selects targets like `UV_BUNDLE_TARGETS`, and
+`dist`/`dist:mac`/`dist:win` prepare the same targets as `uv`. macOS and Linux
+interpreters contain symlinks, so prepare them on macOS or Linux.
+`PYTHON_BUNDLE_VERSION` and `PYTHON_BUNDLE_RELEASE` select another build, and
+`PYTHON_BUNDLE_MIRROR` downloads from a mirror with the same release layout, e.g.
+`https://registry.npmmirror.com/-/binary/python-build-standalone`. The bundle
+adds roughly 40 MB per architecture before installer compression; the universal
+macOS app carries both architectures.
 
 ## Desktop updates
 
@@ -314,8 +343,10 @@ Quit terminates it. The next start can replace records left by a crashed process
 - Closing the window on macOS keeps the app and Connector running in the
   background. Explicit Quit stops the runtime and terminates the full process
   tree.
-- Open-at-login, silent launch, automatic Connector start, `uv` path, PyPI
-  mirror, Python download mirror, and log retention are Desktop settings.
+- Open-at-login, silent launch, automatic Connector start, `uv` path, Python
+  path, PyPI mirror, Python download mirror, and log retention are Desktop
+  settings. Settings shows the resolved uv and Python, and hides the Python
+  download mirror while a bundled or saved interpreter is in use.
 - On first initialization without a saved mirror choice, Main checks the OS
   preferred languages and selects Aliyun PyPI and npmmirror Python builds for
   Chinese systems, or the official sources otherwise. It persists the choice before any `uv` provisioning process and
