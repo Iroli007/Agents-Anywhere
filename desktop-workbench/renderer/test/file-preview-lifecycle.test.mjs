@@ -96,6 +96,38 @@ test("rapid file switches reuse the editor, keep old content read-only, and igno
   assert.equal(editors.length, start + 1)
 })
 
+test("a detached preview retries its file read when its login token arrives", async t => {
+  const reads = []
+  t.mock.method(dashboardApi, "connectorFsReadText", async (token, _connector, _root, path) => {
+    reads.push({ token, path })
+    return textFile(path)
+  })
+  const f = await fixture(t, FilePreviewSurface)
+  const props = { connectorId: "connector", root: "/repo", initialPath: "/repo/main.ts", mode: "window" }
+  await f.render({ ...props, token: null })
+  assert.deepEqual(reads, [])
+  await f.render({ ...props, token: "handed-off-token" })
+  assert.deepEqual(reads, [{ token: "handed-off-token", path: "/repo/main.ts" }])
+  assert.equal(editors.at(-1).getValue(), "/repo/main.ts")
+})
+
+test("a detached attachment retries its download when its login token arrives", async t => {
+  const downloads = []
+  t.mock.method(dashboardApi, "downloadBlob", async token => {
+    downloads.push(token)
+    if (!token) throw new Error("Authentication required")
+    return new Blob(["attachment content"], { type: "text/plain" })
+  })
+  const f = await fixture(t, FilePreviewSurface)
+  const props = { connectorId: "connector", root: "/repo", initialPath: "/repo/note.txt",
+    initialName: "note.txt", sourceUrl: "/api/v2/attachments/note", mode: "window" }
+  await f.render({ ...props, token: null })
+  assert.deepEqual(downloads, [null])
+  await f.render({ ...props, token: "handed-off-token" })
+  assert.deepEqual(downloads, [null, "handed-off-token"])
+  assert.equal(editors.at(-1).getValue(), "attachment content")
+})
+
 test("resolved file switches preserve the tree and split panels without listing directories again", async t => {
   const listed = []
   t.mock.method(dashboardApi, "connectorFsList", async (_token, _connector, { path }) => {

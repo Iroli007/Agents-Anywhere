@@ -32,7 +32,7 @@ import { Spinner } from "@/components/ui/spinner"
 import { Switch } from "@/components/ui/switch"
 import { MonacoCodeView, type MonacoCodeViewApi } from "@/components/monaco-code-view"
 import { filePreviewLocation, type FilePreviewLocation } from "@/lib/file-preview-location"
-import { openNativeFilePreviewWindow } from "@/lib/file-preview-window"
+import { openNativeFilePreviewWindow, requestNativeFilePreviewToken } from "@/lib/file-preview-window"
 import { dashboardApi } from "@/features/dashboard/api"
 import { loadStoredSession } from "@/features/auth/session"
 import type { FsEntry, FsPreviewSessionResponse, FsReadTextResult } from "@/features/dashboard/types"
@@ -63,11 +63,17 @@ export function FilePreviewPage() {
   const root = params.get("root") ?? ""
   const routePath = params.get("path") ?? ""
   const previewToken = params.get("previewToken") ?? ""
+  const previewRequestId = params.get("previewRequestId") ?? ""
   const routeName = params.get("name") ?? ""
   const sourceUrl = params.get("sourceUrl") ?? ""
   const sourceMediaType = params.get("mediaType") ?? ""
   const sourceSize = routeSourceSize(params.get("size"))
-  const token = React.useMemo(() => loadStoredSession()?.accessToken ?? null, [])
+  const [token, setToken] = React.useState(() => loadStoredSession()?.accessToken ?? null)
+
+  React.useEffect(() => {
+    if (token || !previewRequestId) return
+    return requestNativeFilePreviewToken(previewRequestId, setToken)
+  }, [previewRequestId, token])
 
   return (
     <FilePreviewSurface
@@ -369,6 +375,7 @@ export function FilePreviewSurface({
     sourceMediaType,
     sourceSize,
     sourceUrl,
+    token,
   ])
 
   React.useEffect(() => {
