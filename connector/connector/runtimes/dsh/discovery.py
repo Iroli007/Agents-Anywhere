@@ -31,7 +31,7 @@ class DshDiscovery:
 
 def _static_metadata(values: dict[str, Any]) -> dict[str, Any]:
     return {
-        "endpoint": str(provider_config.endpoint_path(values)),
+        "endpoint": str(provider_config.endpoint_path()),
         "storageMode": "dsh-native",
         "sameSessionWriterLimit": 1,
         "crossProcessWriterExclusion": False,
@@ -121,7 +121,7 @@ async def probe(values: dict[str, Any]) -> DshDiscovery:
 
 
 def load_endpoint(values: dict[str, Any]) -> BridgeEndpoint:
-    path = provider_config.endpoint_path(values)
+    path = provider_config.endpoint_path()
     raw = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(raw, dict) or raw.get("version") != 1:
         raise ValueError("bridge endpoint has an unsupported version")

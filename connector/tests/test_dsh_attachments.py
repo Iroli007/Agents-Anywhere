@@ -6,6 +6,7 @@ import hashlib
 import pytest
 
 from connector.runtime_protocol import RuntimeAttachment, RuntimeAttachmentContent, RuntimeConfig, RuntimeInvalidRequestError
+from connector.runtimes.dsh import provider_config
 from connector.runtimes.dsh.attachments import staged_attachments
 from connector.runtimes.dsh.runtime import DshRuntime
 
@@ -65,7 +66,7 @@ def test_image_only_turn_keeps_large_bytes_out_of_rpc_and_cleans_up(tmp_path):
                 return {"capabilities": [{"capabilityId": "runtime.attachment", "supported": True, "available": True, "allowed": True}]}
             assert method == "session.startTurn" and params["content"] == ""
             reference = params["attachments"][0]
-            path = tmp_path / "agents-anywhere/bridge/attachments/staging" / reference["uploadId"]
+            path = provider_config.bridge_directory() / "attachments/staging" / reference["uploadId"]
             assert path.read_bytes() == content
             assert len(str(params)) < 1024
             return {"accepted": True}
@@ -74,5 +75,5 @@ def test_image_only_turn_keeps_large_bytes_out_of_rpc_and_cleans_up(tmp_path):
         runtime = Runtime(RuntimeConfig("dsh", 1, {"dshHome": str(tmp_path)}), Host(content))
         result = await runtime.start_turn("session", "native", "", attachments=(image(content=content),), client_message_id="message")
         assert result.ok
-        assert list((tmp_path / "agents-anywhere/bridge/attachments/staging").iterdir()) == []
+        assert list((provider_config.bridge_directory() / "attachments/staging").iterdir()) == []
     asyncio.run(run())

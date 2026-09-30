@@ -8,7 +8,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { SessionId } from '@deepseek-ai/dsh-session'
-import { nativeRuntime } from '../fixtures/native-runtime.js'
+import { bridgePath, nativeRuntime } from '../fixtures/native-runtime.js'
 import { corruptHistory } from '../fixtures/corrupt-history.js'
 import { mountAgents, TextAdapter, initialSelections } from '../fixtures/agent-runtime.js'
 import { RuntimeRouter } from '../../src/host/dsh-runtime/router.js'
@@ -84,7 +84,7 @@ test('official image admission, image-only create, retries and cold history pres
     assert.deepEqual(failures, [])
     // Reopen Bridge bookkeeping and query the official persisted session after deleting staging.
     await fixture.ctx.sessions.flush(fixture.ctx.sessions.get(id)!)
-    reopened = new NativeRuntime(fixture.ctx, join(home, 'agents-anywhere/bridge/create-intents'))
+    reopened = new NativeRuntime(fixture.ctx, bridgePath(home, 'create-intents'))
     const cold = projectHistory(await reopened.read(id), 'sess_image').find(item => item.role === 'user')!
     assert.deepEqual(cold, expected)
     assert.equal(JSON.stringify(projectHistory(await reopened.read(id), sessionId('another-account', id))).includes('file_image'), false)

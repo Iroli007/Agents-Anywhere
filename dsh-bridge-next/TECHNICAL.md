@@ -177,7 +177,7 @@ Bridge 的独占锁决定端点文件的写入权。获得锁后会重建残留�
 
 点击该按钮由 Host 重新校验安装记录，生成一次性 `flowId`，再通过 `agents-anywhere-desktop://onboarding?source=dsh-plugin&flowId=...` 唤起桌面端；macOS 走系统协议处理器，Windows、Linux 和开发态用记录中的可执行文件与启动参数传参。URL 由 Host 拼装，不接受客户端传入的路径、命令或回跳地址，也不携带任何凭据。桌面端每次收到该入口都进入自己的引导页，与是否已完成过引导无关。
 
-检测到 Desktop 正在运行时，插件跳过 Connector 自动恢复和账号资料刷新，账号、设备与 Connector 交由桌面端管理；插件只保留 DSH runtime 端点（`<DSH_HOME>/agents-anywhere/bridge/endpoint.json`）和桥接日志。Desktop 退出后，插件可以恢复先前已授权的连接。
+检测到 Desktop 正在运行时，插件跳过 Connector 自动恢复和账号资料刷新，账号、设备与 Connector 交由桌面端管理；插件只保留 DSH runtime 端点（`~/.agents-anywhere/dsh-bridge/endpoint.json`，位于操作系统用户主目录，不随 `DSH_HOME` 变化）和桥接日志。Desktop 退出后，插件可以恢复先前已授权的连接。
 
 ## 验证范围
 

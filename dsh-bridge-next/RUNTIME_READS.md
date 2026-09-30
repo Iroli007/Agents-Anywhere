@@ -23,7 +23,9 @@
 
 ## 发现与添加
 
-发现文件为 `$DSH_HOME/agents-anywhere/bridge/endpoint.json`，未设置环境变量时位于 `~/.dsh` 下。插件也支持绝对路径 `dshHome` 配置，此值会传给自己启动的 Connector；外部 Connector 使用相同的 `dshHome` 配置。
+发现文件固定为 `<操作系统用户主目录>/.agents-anywhere/dsh-bridge/endpoint.json`（Node 使用 `os.userInfo().homedir`，Python 使用 `runtime_owner.system_home()`），`DSH_HOME`、`HOME` 和插件 `stateRoot` 都不改变它，Connector 不需要查找 DSH 数据目录。因此同一操作系统用户同时只能有一个 DSH Host 发布端点。同目录下的 `create-intents/` 和 `attachments/` 也随之迁移。
+
+`dshHome`（未配置时为 `$DSH_HOME` 或 `~/.dsh`）只用于会话身份：会话来源键沿用旧端点路径 `<dshHome>/agents-anywhere/bridge/endpoint.json` 的字符串，保证升级后会话 ID 不变，但不会读取该文件，也没有回退。插件把 `dshHome` 传给自己启动的 Connector；外部 Connector 使用相同的 `dshHome` 配置。插件与 Connector 需要同时升级，新旧版本之间无法互相发现。
 
 文件包含版本、回环地址、端口、进程 ID 和连接 token；在 POSIX 上以 `0600` 发布。进程级 OS 租约保护端点所有权与崩溃后的旧记录回收；卸载只删除自身的记录。另一实例不能覆盖仍有效的端点。
 

@@ -11,12 +11,18 @@ from typing import Any
 
 import pytest
 
+from connector.core import runtime_owner
 from connector.runtime_protocol import (
     RuntimeConfig,
     RuntimeInvalidRequestError,
     RuntimeUnavailableError,
     RuntimeUpstreamError,
 )
+from connector.runtime_protocol.filesystem import (
+    canonical_path,
+    filesystem_resource_key,
+)
+from connector.runtimes.dsh import provider_config
 from connector.runtimes.dsh.discovery import (
     BridgeEndpoint,
     DshDiscovery,
@@ -309,9 +315,27 @@ def test_dsh_questions_forward_existing_notices_and_answers_without_reinterpreta
     asyncio.run(run())
 
 
+def test_endpoint_lives_in_aa_home_while_session_identity_keeps_the_dsh_home_key(
+    tmp_path: Path, monkeypatch
+) -> None:
+    monkeypatch.setenv("DSH_HOME", str(tmp_path / "env-dsh"))
+    home = tmp_path / "custom-dsh"
+    config = asyncio.run(DshProvider().validate_config({"dshHome": str(home)}))
+
+    assert provider_config.endpoint_path() == Path(
+        canonical_path(runtime_owner.system_home() / ".agents-anywhere/dsh-bridge/endpoint.json")
+    )
+    endpoint_claim = next(claim for claim in DshProvider().resource_claims(config) if claim.kind == "dsh_bridge_endpoint")
+    assert endpoint_claim.key == filesystem_resource_key(provider_config.endpoint_path())
+    # Session namespaces hash this key; it must match the pre-move endpoint location.
+    assert DshProvider().session_source_key(config).key == filesystem_resource_key(
+        home / "agents-anywhere" / "bridge" / "endpoint.json"
+    )
+
+
 def test_offline_endpoint_can_be_configured_for_background_recovery(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("DSH_HOME", str(tmp_path))
-    path = tmp_path / "agents-anywhere/bridge/endpoint.json"
+    path = provider_config.endpoint_path()
     path.parent.mkdir(parents=True)
 
     async def run() -> None:
