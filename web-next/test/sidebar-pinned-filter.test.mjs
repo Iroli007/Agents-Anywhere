@@ -21,6 +21,8 @@ const memo = ts.transpileModule(sidebar.slice(start, end), {
 const Probe = new Function("React", "selectPinnedSessions", `
   return function Probe(props) {
     const { sessions, filter } = props
+    // AppSidebar feeds this memo the list already in the user's manual order.
+    const orderedSessions = sessions
     ${memo}
     return React.createElement("output", null, pinnedSessions.map(item => item.id).join(","))
   }

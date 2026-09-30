@@ -2100,5 +2100,6 @@ class SessionRepositoryMixin:
             lastItemAt=last_item_at,
             lastItemOrderSeq=latest.orderSeq if latest else None,
             sortAt=sort_at,
+            createdAt=row["created_at"],
             updatedSeq=updated_seq,
         )

@@ -42,6 +42,7 @@ import {
   type IdentityParts,
   type ProjectIdentity,
 } from "@/components/sidebar/project-identity"
+import { SidebarDropIndicator, useSidebarReorderItem } from "@/components/sidebar/sidebar-reorder"
 import type { ProjectView } from "@/features/dashboard/types"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
@@ -51,6 +52,7 @@ const PROJECT_SESSION_PREVIEW = 8
 
 export function ProjectSidebarItem({
   project,
+  reorderGroup,
   sessions,
   identity,
   identityParts,
@@ -67,6 +69,8 @@ export function ProjectSidebarItem({
   onRenameSession,
 }: {
   project: ProjectView
+  /** Projects sharing a group form one list the user can drag to reorder. */
+  reorderGroup: string
   sessions: WorkspaceSessionView[]
   identity: ProjectIdentity
   identityParts: IdentityParts
@@ -91,6 +95,7 @@ export function ProjectSidebarItem({
   const visibleSessions = collapsesSessions
     ? sessions.filter((session, index) => index < PROJECT_SESSION_PREVIEW || session.id === activeSessionId)
     : sessions
+  const { dragProps, placement, dragging } = useSidebarReorderItem({ kind: "projects", id: project.id, group: reorderGroup })
   const containsActiveSession = sessions.some((session) => session.id === activeSessionId)
   // The identity line is the second row and only carries the dimensions that
   // are filtered right now; `null` keeps the row exactly as it was before.
@@ -104,7 +109,8 @@ export function ProjectSidebarItem({
       <Collapsible open={expanded} onOpenChange={onExpandedChange}>
         <TooltipProvider delayDuration={300}>
         <div
-          className="group/project relative"
+          {...dragProps}
+          className={cn("group/project relative", dragging && "opacity-50")}
           onPointerEnter={() => setNameHovered(true)}
           onPointerLeave={() => setNameHovered(false)}
         >
@@ -215,6 +221,7 @@ export function ProjectSidebarItem({
             </Tooltip>
             </div>
           </TooltipProvider>
+          <SidebarDropIndicator placement={placement} />
         </div>
         </TooltipProvider>
 
@@ -228,6 +235,7 @@ export function ProjectSidebarItem({
                   key={session.id}
                   item={session}
                   inset
+                  reorderGroup={`project:${project.id}`}
                   isActive={activeSessionId === session.id}
                   onOpen={() => onOpenSession(session.id)}
                   onTogglePin={() => onToggleSessionPin(session.id)}

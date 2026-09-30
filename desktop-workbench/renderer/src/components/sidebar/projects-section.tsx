@@ -62,10 +62,12 @@ export function ProjectList({
   projects,
   controller,
   sessionStatus = "active",
+  reorderGroup,
 }: {
   projects: ProjectView[]
   controller: ProjectListController
   sessionStatus?: ProjectSessionStatusFilter
+  reorderGroup: string
 }) {
   return (
     <>
@@ -73,6 +75,7 @@ export function ProjectList({
         <ProjectSidebarItem
           key={project.id}
           project={project}
+          reorderGroup={reorderGroup}
           sessions={controller.sessionsForProject(project.id, sessionStatus)}
           identity={controller.identityForProject(project)}
           identityParts={controller.identityParts}
@@ -219,6 +222,7 @@ export function ProjectsSection({
                   projects={projects}
                   controller={controller}
                   sessionStatus={sessionStatus}
+                  reorderGroup="projects"
                 />
               )}
             </SidebarMenu>
