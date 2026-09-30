@@ -32,6 +32,46 @@ export function commandUi(command: RuntimeCommand): CommandUi | null {
   return null
 }
 
+/** A slash token that could name a command; paths such as "/Users/me" never do. */
+export function commandLikeToken(intent: SlashIntent): boolean {
+  return /^[a-z0-9][a-z0-9_:.-]*$/.test(intent.command) || intent.command === ""
+}
+
+export function commandMatchesQuery(command: RuntimeCommand, query: string): boolean {
+  const normalized = query.toLowerCase()
+  if (!normalized) return true
+  return [command.id, command.title, ...command.aliases].some(value => value.toLowerCase().startsWith(normalized))
+}
+
+export type SlashMode =
+  | { kind: "message" }
+  | { kind: "command"; command: RuntimeCommand }
+  | { kind: "pending" }
+
+/**
+ * Only drafts naming a catalog command run as commands. Other slash text is a
+ * normal message, so pasted paths and prose keep working.
+ */
+export function slashMode(intent: SlashIntent | null, commands: RuntimeCommand[], catalog: { usable: boolean; loading: boolean; error: boolean }): SlashMode {
+  if (!intent || !catalog.usable || !intent.command || !commandLikeToken(intent)) return { kind: "message" }
+  const command = exactCommand(intent, commands)
+  if (command) return { kind: "command", command }
+  // Without a catalog a bare "/name" cannot be classified: hold it rather than
+  // sending an intended command to the model. Text after the name is a message.
+  if (!commands.length && (catalog.loading || catalog.error) && !intent.suffix.trim()) return { kind: "pending" }
+  return { kind: "message" }
+}
+
+export type CommandBlock = "disabled" | "busy" | "readOnly" | "offline" | "unavailable"
+
+export function commandBlock(command: RuntimeCommand, status: RuntimeStatusValue, state: { capability: boolean; writable: boolean; online: boolean }): CommandBlock | null {
+  if (!command.enabled) return "disabled"
+  if (!state.online) return "offline"
+  if (!state.capability) return "unavailable"
+  if (!state.writable) return "readOnly"
+  return commandAllowed(command, status, true, true, true) ? null : "busy"
+}
+
 export function exactCommand(intent: SlashIntent, commands: RuntimeCommand[]): RuntimeCommand | null {
   return commands.find(item => item.id.toLowerCase() === intent.command || item.aliases.some(alias => alias.toLowerCase() === intent.command)) ?? null
 }
