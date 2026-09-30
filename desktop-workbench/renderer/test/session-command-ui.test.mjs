@@ -16,7 +16,12 @@ const { createRoot } = await import('react-dom/client')
 const { NextIntlClientProvider } = await import('next-intl')
 const { SessionComposer } = await import('../src/components/session/session-composer.tsx')
 const { dashboardApi } = await import('../src/features/dashboard/api.ts')
+const { toast } = await import('sonner')
 hook.deregister()
+// Successful command feedback is a transient toast; collect it instead of rendering a Toaster.
+const toasts=[]
+toast.success=(title,options)=>{toasts.push(`${title}\n${options?.description??''}`)}
+const toastText=()=>toasts.join('\n')
 const messages = JSON.parse(readFileSync(new URL('../messages/en.json',import.meta.url),'utf8'))
 const session = {id:'s1',runtime:'codex',runtimeId:'codex',connectorStatus:'online',status:'idle',archived:false,takeover:true}
 const capability = {revision:1,capabilities:[{capabilityId:'session.commands',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true},{capabilityId:'session.interrupt',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true},{capabilityId:'session.send_message',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:true,available:true,allowed:true}]}
@@ -59,7 +64,8 @@ test('composer inserts argument command, submits exact long raw once, preserves 
   await type(input,'/goal status')
   await act(async()=>resolve({ok:true,state:'accepted',message:'Queued',code:null,result:{executionState:'accepted'}}))
   assert.equal(input.value,'/goal status')
-  assert.match(host.textContent,/Queued/)
+  assert.match(toastText(),/Queued/)
+  assert.doesNotMatch(host.textContent,/Queued/)
   assert.equal(messagesSent,0)
 })
 
@@ -72,6 +78,7 @@ test('an old command acknowledgement cannot clear or report against the newly se
   await act(async()=>resolve({ok:true,state:'accepted',code:null,message:'old session accepted',result:{executionState:'accepted'}}))
   assert.equal(input.value,'new session draft')
   assert.doesNotMatch(host.textContent,/old session accepted/)
+  assert.doesNotMatch(toastText(),/old session accepted/)
 })
 
 test('menu execution preserves resolved raw, clears unchanged source draft, and never model-sends',async t=>{
@@ -120,10 +127,11 @@ test('A to B to A invalidates command1 while command2 remains pending',async t=>
   await act(async()=>pending[0]({ok:true,state:'completed',message:'old result'}))
   assert.equal(input.value,'/compact')
   assert.doesNotMatch(host.textContent,/old result/)
+  assert.doesNotMatch(toastText(),/old result/)
   await enter();assert.equal(pending.length,2,'old finally must not release command2')
   await act(async()=>pending[1]({ok:true,state:'completed',message:'new result'}))
   assert.equal(input.value,'')
-  assert.match(host.textContent,/new result/)
+  assert.match(toastText(),/new result/)
 })
 
 test('slash text that is not a catalog command is sent as a message; unsupported multiline and native ok:false retain the draft',async t=>{
@@ -198,17 +206,27 @@ test('menu shows the block reason inline and keyboard selects, completes, runs a
   assert.deepEqual(calls,[{id:'goal',raw:'/goal ship it'}])
 })
 
-test('successful command feedback hides itself',async t=>{
-  const realSetTimeout=window.setTimeout;const timers=[]
-  window.setTimeout=(fn,ms)=>{if(ms===5000){timers.push(fn);return 0}return realSetTimeout(fn,ms)}
-  t.after(()=>{window.setTimeout=realSetTimeout})
+test('successful command feedback is a toast, not inline',async t=>{
+  toasts.length=0
   function Host(){const [value,setValue]=useState('/compact');return h(SessionComposer,{token:'test',session,runtimeState:{status:'idle',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:capability,modelCatalog:null,permissionCatalog:null,runtimeCommands:[descriptor('compact',false)],onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>true,onInterrupt(){},onToggleTakeover(){},onCommand:async()=>({ok:true,state:'completed',message:'compacted'})})}
   const host=await mount(t,h(Host));const input=host.querySelector('textarea')
   await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
-  assert.match(host.querySelector('[role=status]').textContent,/compacted/)
-  assert.ok(timers.length>0)
-  await act(async()=>timers.at(-1)())
+  assert.match(toastText(),/compacted/)
   assert.doesNotMatch(host.textContent,/compacted/)
+})
+
+test('a bare slash explains why a session cannot run commands and still sends other text',async t=>{
+  const unsupported={revision:1,capabilities:[...capability.capabilities.filter(item=>item.capabilityId!=='session.commands'),{capabilityId:'session.commands',scope:'session',runtime:'codex',runtimeId:'codex',sessionId:'s1',supported:false,available:false,allowed:false,unavailableReason:'Upgrade the bridge.'}]}
+  let sent=0
+  function Host(){const [value,setValue]=useState('/');return h(SessionComposer,{token:'test',session,runtimeState:{status:'idle',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:unsupported,modelCatalog:null,permissionCatalog:null,runtimeCommands:[],onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>{sent++;return true},onInterrupt(){},onToggleTakeover(){},onCommand:async()=>assert.fail('commands are unavailable')})}
+  const host=await mount(t,h(Host));const input=host.querySelector('textarea')
+  assert.match(host.querySelector('[role=status]').textContent,/does not support commands/)
+  await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Escape',bubbles:true})))
+  assert.equal(host.querySelector('[role=status]'),null)
+  await type(input,'/hello there')
+  assert.equal(host.querySelector('[role=status]'),null)
+  await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
+  assert.equal(sent,1)
 })
 
 test('selector command with no available native settings control reports unavailable without dispatch',async t=>{
@@ -342,9 +360,11 @@ test('accepted, completed and unknown feedback remain distinct and unknown does 
     let calls=0
     function Host(){const [value,setValue]=useState('/compact');return h(SessionComposer,{token:'test',session,runtimeState:{status:'idle',metadata:{},selections:{}},pendingInteractionCount:0,sending:false,interrupting:false,takeoverBusy:false,value,effectiveCapabilities:capability,modelCatalog:null,permissionCatalog:null,runtimeCommands:[descriptor('compact',false)],onCommandQueryChange(){},onValueChange:setValue,onSelectionChange:async()=>true,onSend:async()=>assert.fail('command is not a message'),onInterrupt(){},onToggleTakeover(){},onCommand:async()=>{calls++;return {ok:state!=='unknown',state,message:'Native  result\nkept',result:{executionState:state}}}})}
     const host=await mount(t,h(Host));const input=host.querySelector('textarea')
+    toasts.length=0
     await act(async()=>input.dispatchEvent(new window.KeyboardEvent('keydown',{key:'Enter',bubbles:true})))
-    assert.ok(host.textContent.includes(expected))
-    assert.ok(host.textContent.includes('Native  result\nkept'))
+    const shown=state==='unknown'?host.textContent:toastText()
+    assert.ok(shown.includes(expected))
+    assert.ok(shown.includes('Native  result\nkept'))
     assert.equal(input.value,state==='unknown'?'/compact':'')
     await act(async()=>Promise.resolve())
     assert.equal(calls,1)

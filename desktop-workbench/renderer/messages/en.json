@@ -1057,6 +1057,7 @@
       "commandBlocked_readOnly": "Turn on takeover to run commands",
       "commandBlocked_offline": "The device is offline",
       "commandBlocked_unavailable": "Commands are unavailable for this session",
+      "commandUnsupported": "This runtime version does not support commands yet. Upgrade it to use them.",
       "approvalPending": "{count} approval request pending",
       "approvalPendingPlural": "{count} approval requests pending",
       "interactionPending": "{count} interaction pending",
