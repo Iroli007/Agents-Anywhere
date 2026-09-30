@@ -41,6 +41,7 @@
     "All projects": "pages.settings.archivedAllProjects",
     "Always use the dark appearance.": "pages.settings.darkDescription",
     "Always use the light appearance.": "pages.settings.lightDescription",
+    "Announcement": "announcement.title",
     "Appearance": "pages.settings.appearance",
     "Archive": "dashboard.actions.archive",
     "Archive all in scope": "dashboard.device.archiveAll",
@@ -95,6 +96,7 @@
     "Files": "dashboard.panels.files.title",
     "Gateway API key": "dashboard.device.modelGatewayApiKey",
     "Gateway URL": "dashboard.device.modelGatewayBaseUrl",
+    "Got it": "announcement.acknowledge",
     "Home 目录": "dashboard.workspacePicker.home",
     "Instance name": "dashboard.device.runtimeName",
     "Language": "pages.settings.language",
@@ -128,6 +130,12 @@
     "Profile photo": "pages.settings.changeAvatar",
     "Project actions": "dashboard.projects.options",
     "Projects": "dashboard.device.projects",
+    "Published %@": {
+      "source": "announcement.publishedAt",
+      "arguments": {
+        "time": "@"
+      }
+    },
     "QR Code Login": "dashboard.mobileConnections.scanTitle",
     "Reasoning efforts": "dashboard.device.customModelEfforts",
     "Recent": "common.sections.recents",
