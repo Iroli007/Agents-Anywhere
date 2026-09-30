@@ -25,7 +25,7 @@
 
 发现文件固定为 `<操作系统用户主目录>/.agents-anywhere/dsh-bridge/endpoint.json`（Node 使用 `os.userInfo().homedir`，Python 使用 `runtime_owner.system_home()`），`DSH_HOME`、`HOME` 和插件 `stateRoot` 都不改变它，Connector 不需要查找 DSH 数据目录。因此同一操作系统用户同时只能有一个 DSH Host 发布端点。同目录下的 `create-intents/` 和 `attachments/` 也随之迁移。
 
-为兼容旧插件，Connector 在固定位置没有 `endpoint.json` 时，回退读取旧位置 `<dshHome>/agents-anywhere/bridge/endpoint.json`（`dshHome` 未配置时为 `$DSH_HOME` 或 `~/.dsh`）；固定位置的文件存在但无效时直接报错，不回退。附件暂存目录跟随实际连接的端点所在目录。会话来源键始终使用旧位置的路径字符串，因此升级前后会话 ID 不变。插件把 `dshHome` 传给自己启动的 Connector；外部 Connector 使用相同的 `dshHome` 配置。旧版 Connector 只读取旧位置，无法发现新插件，需要升级。
+为兼容旧插件，Connector 依次尝试固定位置和旧位置 `<dshHome>/agents-anywhere/bridge/endpoint.json`（`dshHome` 未配置时为 `$DSH_HOME` 或 `~/.dsh`）：固定位置的文件缺失、格式无效、进程已退出或鉴权连接失败时，继续尝试旧位置；两者都不可用时报告固定位置的错误（固定位置缺失时报告旧位置的错误）。每次重连都重新按此顺序尝试。附件暂存目录跟随实际连接的端点所在目录。会话来源键始终使用旧位置的路径字符串，因此升级前后会话 ID 不变。插件把 `dshHome` 传给自己启动的 Connector；外部 Connector 使用相同的 `dshHome` 配置。旧版 Connector 只读取旧位置，无法发现新插件，需要升级。
 
 文件包含版本、回环地址、端口、进程 ID 和连接 token；在 POSIX 上以 `0600` 发布。进程级 OS 租约保护端点所有权与崩溃后的旧记录回收；卸载只删除自身的记录。另一实例不能覆盖仍有效的端点。
 

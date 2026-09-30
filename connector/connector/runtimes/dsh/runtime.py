@@ -356,25 +356,13 @@ class DshRuntime(AgentRuntime):
     async def _start_client(self) -> None:
         values = provider_config.normalized_config_values(dict(self.config.values))
         try:
-            endpoint = discovery.load_endpoint(values)
+            endpoints = discovery.load_endpoints(values)
         except (OSError, ValueError) as exc:
             raise RuntimeUnavailableError(
                 "请启动 DSH，并启用手机连接插件。"
             ) from exc
-        client = BridgeClient(
-            endpoint=endpoint,
-            connector_id=self.host.connector_id,
-            session_namespace=getattr(
-                self.host, "session_namespace", self.host.connector_id
-            ),
-            client_version=self.client_version,
-            startup_timeout=int(values["startupTimeoutMs"]) / 1000,
-            request_timeout=int(values["requestTimeoutMs"]) / 1000,
-            notification_handler=self._handle_notification,
-            exit_handler=self._handle_exit,
-        )
+        client, result = await self._connect(endpoints, values)
         try:
-            result = await client.start()
             identity = result["identity"]
             self._identity = RuntimeIdentity(
                 runtime="dsh",
@@ -415,6 +403,34 @@ class DshRuntime(AgentRuntime):
         except BaseException:
             await client.close()
             raise
+
+    async def _connect(
+        self, endpoints: list[discovery.BridgeEndpoint], values: dict[str, Any]
+    ) -> tuple[BridgeClient, dict[str, Any]]:
+        """Handshake with the first live endpoint; a stale one falls through to the next."""
+        failure: Exception | None = None
+        for endpoint in endpoints:
+            client = BridgeClient(
+                endpoint=endpoint,
+                connector_id=self.host.connector_id,
+                session_namespace=getattr(
+                    self.host, "session_namespace", self.host.connector_id
+                ),
+                client_version=self.client_version,
+                startup_timeout=int(values["startupTimeoutMs"]) / 1000,
+                request_timeout=int(values["requestTimeoutMs"]) / 1000,
+                notification_handler=self._handle_notification,
+                exit_handler=self._handle_exit,
+            )
+            try:
+                return client, await client.start()
+            except BaseException as exc:
+                await client.close()
+                if not isinstance(exc, (OSError, RuntimeError, ValueError)):
+                    raise
+                failure = failure or exc
+        assert failure is not None
+        raise failure
 
     async def _ensure_client(self) -> None:
         if self._client is not None and self._client.connected:
