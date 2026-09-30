@@ -219,6 +219,7 @@ function mapSession(session: RealSessionView): SessionView {
     pinned: session.pinned,
     pinnedAt: session.pinnedAt,
     archived: session.archived,
+    autoArchived: session.autoArchived,
     archivedAt: session.archivedAt,
     userArchived: session.userArchived,
     sourceAvailability: session.sourceAvailability,

@@ -94,6 +94,17 @@ class SweepClient:
 
         asyncio.run(run())
 
+    def set_tombstone(self, session_id: str, when: str) -> None:
+        async def run() -> None:
+            async with self.store.engine.begin() as conn:
+                await conn.execute(
+                    update(sessions_t)
+                    .where(sessions_t.c.id == session_id)
+                    .values(auto_archived_at=when)
+                )
+
+        asyncio.run(run())
+
     def set_status(self, session_id: str, status: str) -> None:
         async def run() -> None:
             async with self.store.engine.begin() as conn:
@@ -287,6 +298,25 @@ def test_manual_unarchive_is_not_undone_by_the_next_sweep(sweep_client):
 
     assert api.row("rescued")[:2] == (0, 0)
     assert "rescued" in api.listed_ids(archived=False)
+
+
+def test_activity_after_a_manual_unarchive_makes_the_session_eligible_again(sweep_client):
+    """The tombstone only shields the user's unarchive, not the session forever."""
+
+    api = sweep_client
+    api.create("rescued")
+    api.set_activity("rescued", LONG_AGO)
+    api.sweep()
+    api.unarchive("rescued")
+    assert api.row("rescued")[:2] == (0, 0)
+
+    # The user unarchived it long ago, used it once more afterwards, and that
+    # activity has itself gone idle past the threshold.
+    api.set_tombstone("rescued", _iso(AUTO_ARCHIVE_INACTIVE_DAYS + 20))
+    api.set_activity("rescued", LONG_AGO)
+    api.sweep()
+
+    assert api.row("rescued")[:2] == (1, 1)
 
 
 def test_a_user_archive_is_never_revived_by_the_sweeper(sweep_client):

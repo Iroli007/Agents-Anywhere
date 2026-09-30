@@ -124,7 +124,9 @@ export function SessionComposer({
   const isWaiting = runtimeStatus === "waiting" || runtimeStatus === "pending"
   const isError = runtimeStatus === "error"
   const isDisconnected = runtimeStatus === "disconnected"
-  const sourceUnavailable = session.archived
+  // An inactivity auto-archive only folds the session away; sending a message
+  // is what brings it back, so only a user archive locks the composer.
+  const sourceUnavailable = session.archived && !session.autoArchived
   const connectorOnline = session.connectorStatus === "online"
   const acceptsUserInput =
     connectorOnline &&

@@ -1484,9 +1484,14 @@ class SessionRepositoryMixin:
             query = query.where(
                 sessions_t.c.pinned == 0,
                 # A tombstone means the user already pulled this session back
-                # out of the archive. Leave it alone until new activity clears
-                # the stamp.
-                sessions_t.c.auto_archived_at.is_(None),
+                # out of the archive. Leave it alone until there is activity
+                # newer than the stamp; from then on the ordinary idle rule
+                # applies again. Comparing here, instead of clearing the stamp
+                # on every activity write, keeps the hot write paths untouched.
+                or_(
+                    sessions_t.c.auto_archived_at.is_(None),
+                    activity_at > sessions_t.c.auto_archived_at,
+                ),
                 sessions_t.c.status.in_(sorted(ARCHIVABLE_SESSION_STATUSES)),
                 # session_active_runs is the authoritative live-run record and
                 # catches a stuck run whose status drifted back to "idle".
