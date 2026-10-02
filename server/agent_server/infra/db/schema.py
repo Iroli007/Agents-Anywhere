@@ -605,6 +605,15 @@ pairing_codes = Table(
 )
 
 
+connector_snapshot_watermarks = Table(
+    "connector_snapshot_watermarks", metadata,
+    Column("connector_id", Text, ForeignKey("connectors.id", ondelete="CASCADE"), nullable=False),
+    Column("runtime_id", Text, nullable=False),
+    Column("session_id", Text, nullable=False),
+    Column("through_seq", BigInteger, nullable=False),
+    PrimaryKeyConstraint("connector_id", "runtime_id", "session_id"),
+)
+
 connector_uploads = Table(
     "connector_uploads", metadata,
     Column("connector_id", Text, ForeignKey("connectors.id", ondelete="CASCADE"), nullable=False),

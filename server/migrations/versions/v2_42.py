@@ -14,6 +14,13 @@ depends_on = None
 
 def upgrade():
     names = set(sa.inspect(op.get_bind()).get_table_names())
+    if "connector_snapshot_watermarks" not in names:
+        op.create_table("connector_snapshot_watermarks",
+            sa.Column("connector_id", sa.Text(), sa.ForeignKey("connectors.id", ondelete="CASCADE"), nullable=False),
+            sa.Column("runtime_id", sa.Text(), nullable=False),
+            sa.Column("session_id", sa.Text(), nullable=False),
+            sa.Column("through_seq", sa.BigInteger(), nullable=False),
+            sa.PrimaryKeyConstraint("connector_id", "runtime_id", "session_id"))
     if "connector_uploads" not in names:
         op.create_table("connector_uploads",
             sa.Column("connector_id", sa.Text(), sa.ForeignKey("connectors.id", ondelete="CASCADE"), nullable=False),
@@ -41,3 +48,4 @@ def upgrade():
 def downgrade():
     op.drop_table("connector_upload_chunks")
     op.drop_table("connector_uploads")
+    op.drop_table("connector_snapshot_watermarks")

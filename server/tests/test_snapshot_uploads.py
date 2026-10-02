@@ -105,6 +105,56 @@ def test_invalid_digest_chunk_bounds_expiration_and_quota(tmp_path):
         assert response.status_code == (200 if index == 0 else 413)
 
 
+@pytest.mark.parametrize("committed", [False, True])
+def test_background_cleanup_without_new_upload_preserves_unexpired_data(tmp_path, monkeypatch, committed):
+    from sqlalchemy import select, update
+
+    import agent_server.app as module
+    from agent_server.infra.db.schema import connector_upload_chunks, connector_uploads
+
+    client = make_client(tmp_path)
+    connector, token, session, _ = create_connector_and_session(client, runtime="dsh")
+    headers = {"Authorization": f"Bearer {token}"}
+    raw, expired = capture(client, connector, session, text="expired upload")
+    assert client.post(ROOT, json=expired, headers=headers).status_code == 200
+    assert put(client, headers, expired, raw, 0).status_code == 200
+    if committed:
+        assert client.post(f"{ROOT}/{expired['uploadId']}/commit", headers=headers).json()["committed"] is True
+
+    active = {**expired, "uploadId": "b" * 64, "sessionId": "active-upload"}
+    assert client.post(ROOT, json=active, headers=headers).status_code == 200
+    assert put(client, headers, active, raw, 0).status_code == 200
+
+    async def stop_after_sweep(seconds):
+        assert seconds == module.SNAPSHOT_UPLOAD_SWEEP_SECONDS
+        raise asyncio.CancelledError
+
+    monkeypatch.setattr(module.asyncio, "sleep", stop_after_sweep)
+
+    async def run():
+        store = client.app.state.store
+        previous_seq = await store.get_session_seq(session)
+        async with store.engine.begin() as conn:
+            await conn.execute(update(connector_uploads).where(
+                connector_uploads.c.upload_id == expired["uploadId"],
+            ).values(expires_at="2000-01-01T00:00:00Z"))
+        with pytest.raises(asyncio.CancelledError):
+            await module._snapshot_upload_cleanup(client.app)
+        async with store.engine.connect() as conn:
+            assert (await conn.execute(select(connector_uploads.c.upload_id))).scalars().all() == [active["uploadId"]]
+            assert (await conn.execute(select(connector_upload_chunks.c.upload_id))).scalars().all() == [active["uploadId"]]
+        assert await store.get_session_seq(session) == previous_seq
+        history = await store.timeline.read(session)
+        assert len(history) == (1 if committed else 0)
+
+    asyncio.run(run())
+
+    monkeypatch.undo()
+    restarted = ApiV2TestClient(create_app(tmp_path / "test.sqlite3"))
+    assert restarted.post(ROOT, json={**expired, "throughSeq": expired["throughSeq"] - 1}, headers=headers).status_code == 409
+    assert restarted.post(ROOT, json=expired, headers=headers).json()["receivedChunks"] == []
+
+
 def test_real_connector_resumes_after_server_restart_and_lost_chunk_reply(tmp_path):
     import sys
     from pathlib import Path

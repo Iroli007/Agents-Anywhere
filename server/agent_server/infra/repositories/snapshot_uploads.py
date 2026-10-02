@@ -13,11 +13,16 @@ from agent_server.core.snapshot_upload import (
     SnapshotUploadManifest,
 )
 from agent_server.core.utc import utc_now
+from agent_server.infra.db.schema import connector_snapshot_watermarks as watermarks
 from agent_server.infra.db.schema import connector_upload_chunks as chunks
 from agent_server.infra.db.schema import connector_uploads as uploads
 
 
 class SnapshotUploadRepositoryMixin:
+    async def purge_expired_snapshot_uploads(self) -> None:
+        async with self._engine.begin() as conn:
+            await conn.execute(delete(uploads).where(uploads.c.expires_at < utc_now()))
+
     async def begin_snapshot_upload(self, connector_id: str, manifest: SnapshotUploadManifest) -> dict:
         now = utc_now()
         expires = (datetime.now(UTC) + timedelta(hours=24)).isoformat().replace("+00:00", "Z")
@@ -25,7 +30,10 @@ class SnapshotUploadRepositoryMixin:
             await conn.execute(delete(uploads).where(uploads.c.expires_at < now))
             scope = (uploads.c.connector_id == connector_id, uploads.c.runtime_id == manifest.runtimeId,
                      uploads.c.session_id == manifest.sessionId)
-            latest_seq = await conn.scalar(select(func.max(uploads.c.through_seq)).where(*scope))
+            watermark_scope = (watermarks.c.connector_id == connector_id,
+                               watermarks.c.runtime_id == manifest.runtimeId,
+                               watermarks.c.session_id == manifest.sessionId)
+            latest_seq = await conn.scalar(select(watermarks.c.through_seq).where(*watermark_scope))
             if latest_seq is not None and manifest.throughSeq < latest_seq:
                 raise SnapshotUploadError(409, "Snapshot is older than the latest upload")
             row = (await conn.execute(select(uploads).where(uploads.c.connector_id == connector_id,
@@ -50,6 +58,11 @@ class SnapshotUploadRepositoryMixin:
                     session_id=manifest.sessionId, runtime_id=manifest.runtimeId, through_seq=manifest.throughSeq,
                     total_bytes=manifest.totalBytes, status="pending", expires_at=expires))
                 row = {"status": "pending"}
+            if latest_seq is None:
+                await conn.execute(insert(watermarks).values(connector_id=connector_id,
+                    runtime_id=manifest.runtimeId, session_id=manifest.sessionId, through_seq=manifest.throughSeq))
+            elif manifest.throughSeq > latest_seq:
+                await conn.execute(update(watermarks).where(*watermark_scope).values(through_seq=manifest.throughSeq))
             indices = (await conn.execute(select(chunks.c.chunk_index).where(chunks.c.connector_id == connector_id,
                 chunks.c.upload_id == manifest.uploadId).order_by(chunks.c.chunk_index))).scalars().all()
         return {"chunkBytes": CHUNK_BYTES, "receivedChunks": list(indices), "committed": row["status"] == "committed"}

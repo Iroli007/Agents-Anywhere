@@ -1145,6 +1145,7 @@ def test_v2_42_adds_snapshot_staging_tables(tmp_path) -> None:
     try:
         assert inspect(engine).has_table("connector_uploads")
         assert inspect(engine).has_table("connector_upload_chunks")
+        assert inspect(engine).has_table("connector_snapshot_watermarks")
         fk = inspect(engine).get_foreign_keys("connector_upload_chunks")[0]
         assert fk["referred_table"] == "connector_uploads"
         assert fk["options"]["ondelete"] == "CASCADE"
