@@ -52,7 +52,7 @@ def test_slow_snapshot_upload_keeps_ack_pending_until_cloud_acceptance(reject):
 
         async with httpx.AsyncClient(transport=SlowUplink()) as http:
             ingest = ConnectorIngestClient("http://test", AsyncMock(return_value="token"), lambda: http, lambda _: http)
-            base = ConnectorRuntimeHost("device", AsyncMock(), AsyncMock(), ingest_notifications=ingest.ingest_notifications)
+            base = ConnectorRuntimeHost("device", AsyncMock(), AsyncMock(), ingest_notifications=ingest.ingest_notifications, ingest_snapshot=ingest.ingest_snapshot)
             host = RuntimeInstanceHost(base, RuntimeInstanceSpec(runtime_id="rti_dsh", runtime_type="dsh", name="DSH"))
 
             async def request(method, params):

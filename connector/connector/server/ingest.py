@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Awaitable, Callable
-from typing import Any
+from collections.abc import Awaitable, Callable, Iterable
+from typing import Any, BinaryIO
 
 import httpx
 
@@ -11,6 +11,7 @@ from connector.logging import logger
 from connector.runtime_protocol.host import UploadProgress
 from connector.server.auth import ConnectorAuthenticationError
 from connector.server.errors import ConnectorNetworkError
+from connector.server.snapshot_body import snapshot_body
 from connector.server.urls import api_v2_url
 
 # HTTP ingest owns explicit bulk sync and disconnected WebSocket fallback.
@@ -77,6 +78,55 @@ class ConnectorIngestClient:
             return
         await self.post_batch(list(notifications), on_progress=on_progress)
 
+    async def ingest_snapshot(
+        self, runtime: str, runtime_id: str, session_id: str,
+        meta: dict[str, Any], items: Iterable[dict[str, Any]], *, on_progress: UploadProgress | None = None,
+    ) -> None:
+        task = asyncio.create_task(asyncio.to_thread(snapshot_body, runtime, runtime_id, session_id, meta, items))
+        try:
+            body = await asyncio.shield(task)
+        except asyncio.CancelledError:
+            (await task).close()
+            raise
+        try:
+            async with self._post_lock:
+                self._posting = True
+                try:
+                    await self._drain_pending(on_progress)
+                    token = await self._access_token_provider(False)
+                    client = self._http_client_getter()
+                    owned = client is None
+                    if client is None:
+                        client = self._http_client_factory(60)
+                    try:
+                        await self._send_with_auth(lambda token: self._post_snapshot_body(client, token, body, on_progress), token)
+                    finally:
+                        if owned:
+                            await client.aclose()
+                finally:
+                    self._posting = False
+                    if not self.has_pending:
+                        self._available.clear()
+        finally:
+            body.close()
+
+    async def _post_snapshot_body(self, client, token, body: BinaryIO, on_progress):
+        body.seek(0, 2)
+        size = body.tell()
+        body.seek(0)
+
+        async def stream():
+            while chunk := body.read(UPLOAD_CHUNK_BYTES):
+                yield chunk
+                if on_progress is not None:
+                    await on_progress(len(chunk))
+
+        return await client.post(
+            api_v2_url(self._server_url, "/connector/ingest"),
+            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Content-Length": str(size)},
+            content=stream(), timeout=60,
+        )
+
     async def flush_loop(self) -> None:
         """Keep a failed batch at the head; cancellation leaves it recoverable.
 
@@ -125,20 +175,21 @@ class ConnectorIngestClient:
         async with self._post_lock:
             self._posting = True
             try:
-                # Direct scanner snapshots cannot overtake an older failed batch.
-                # Drain only work already queued at admission so a live stream
-                # cannot starve this synchronous snapshot indefinitely.
-                remaining = len(self._inflight) + self._notify_queue.qsize()
-                while remaining:
-                    self._collect_pending()
-                    await self._post_batch(self._inflight, on_progress=on_progress)
-                    remaining = max(0, remaining - len(self._inflight))
-                    self._inflight = []
+                await self._drain_pending(on_progress)
                 await self._post_batch(notifications, on_progress=on_progress)
             finally:
                 self._posting = False
                 if not self.has_pending:
                     self._available.clear()
+
+    async def _drain_pending(self, on_progress):
+        # Preserve FIFO ahead of a synchronous snapshot; only drain work queued at admission.
+        remaining = len(self._inflight) + self._notify_queue.qsize()
+        while remaining:
+            self._collect_pending()
+            await self._post_batch(self._inflight, on_progress=on_progress)
+            remaining = max(0, remaining - len(self._inflight))
+            self._inflight = []
 
     async def _post_batch(self, notifications: list[dict[str, Any]], *, on_progress: UploadProgress | None = None) -> None:
         if not notifications:
@@ -146,45 +197,33 @@ class ConnectorIngestClient:
         notifications = coalesce_timeline_item_upserts(notifications)
         if not notifications:
             return
-        access_token = await self._access_token_provider(False)
+        token = await self._access_token_provider(False)
         client = self._http_client_getter()
         owned = client is None
         if client is None:
             client = self._http_client_factory(60)
         try:
-            try:
-                response = await self._post_ingest_batch(
-                    client, access_token, notifications, on_progress=on_progress
-                )
-            except httpx.RequestError as exc:
-                raise ConnectorNetworkError(
-                    f"backend ingest request failed: {exc}"
-                ) from exc
-            if getattr(response, "status_code", None) == 401:
-                logger.warning(
-                    "connector ingest token rejected; refreshing access token and retrying"
-                )
-                access_token = await self._access_token_provider(True)
-                try:
-                    response = await self._post_ingest_batch(
-                        client, access_token, notifications, on_progress=on_progress
-                    )
-                except httpx.RequestError as exc:
-                    raise ConnectorNetworkError(
-                        f"backend ingest retry failed: {exc}"
-                    ) from exc
-                if getattr(response, "status_code", None) == 401:
-                    raise ConnectorAuthenticationError(
-                        "connector credential no longer valid"
-                    )
-            status = getattr(response, "status_code", 200)
-            if status in {408, 429} or status >= 500:
-                raise ConnectorNetworkError(f"backend ingest temporarily unavailable: HTTP {status}")
-            response.raise_for_status()
-            _raise_for_rejected_notifications(response)
+            await self._send_with_auth(lambda token: self._post_ingest_batch(client, token, notifications, on_progress=on_progress), token)
         finally:
             if owned:
                 await client.aclose()
+
+    async def _send_with_auth(self, send, token):
+        try:
+            response = await send(token)
+            if getattr(response, "status_code", None) == 401:
+                token = await self._access_token_provider(True)
+                response = await send(token)
+                if getattr(response, "status_code", None) == 401:
+                    raise ConnectorAuthenticationError("connector credential no longer valid")
+        except httpx.RequestError as exc:
+            raise ConnectorNetworkError(f"backend ingest request failed: {exc}") from exc
+        status = getattr(response, "status_code", 200)
+        if status in {408, 429} or status >= 500:
+            raise ConnectorNetworkError(f"backend ingest temporarily unavailable: HTTP {status}")
+        response.raise_for_status()
+        _raise_for_rejected_notifications(response)
+        return response
 
     async def _post_ingest_batch(
         self,

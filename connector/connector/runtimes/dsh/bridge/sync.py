@@ -4,7 +4,7 @@ import asyncio
 import pickle
 import sys
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from contextlib import ExitStack
 from typing import Any
 
@@ -134,15 +134,10 @@ class SyncRelay:
             elif kind == "snapshot.commit":
                 if len(self.item_ids) != op.get("totalItems") or op.get("throughSeq") != self.snapshot["throughSeq"]:
                     raise ValueError("Incomplete snapshot; previous backend history remains intact")
-                items = await self.load_items()
-                meta = self.snapshot["meta"]
-                # Reuse the existing complete snapshot API only after every page is received.
                 kwargs = {"on_progress": self.on_progress} if self.on_progress is not None else {}
-                await self.host.publish_runtime_notifications("dsh", [
-                    {"method": "session.meta.upsert", "params": {"sessionId": op["sessionId"], **meta}},
-                    {"method": "timeline.sync", "params": {"sessionId": op["sessionId"],
-                        "externalSessionId": meta["externalSessionId"], "items": items, "complete": True}},
-                ], **kwargs)
+                await self.host.publish_runtime_snapshot(
+                    "dsh", op["sessionId"], self.snapshot["meta"], self.iter_items(), **kwargs,
+                )
                 self.clear_snapshot()
             else:
                 self.clear_snapshot()
@@ -198,24 +193,17 @@ class SyncRelay:
             await task
             raise
 
-    async def load_items(self) -> list[dict[str, Any]]:
+    def iter_items(self) -> Iterator[dict[str, Any]]:
         if self.file is None:
-            return self.items
-        task = asyncio.create_task(asyncio.to_thread(self.read_spool))
-        try:
-            return await asyncio.shield(task)
-        except asyncio.CancelledError:
-            await task
-            raise
-
-    def read_spool(self) -> list[dict[str, Any]]:
+            yield from self.items
+            return
         self.file.seek(0)
-        items: list[dict[str, Any]] = []
         while True:
             try:
-                items.extend(pickle.load(self.file))
+                page = pickle.load(self.file)
             except EOFError:
-                return items
+                return
+            yield from page
 
     async def publish_notification(self, notice: dict[str, Any]) -> None:
         method, params = notice.get("method"), notice.get("params")

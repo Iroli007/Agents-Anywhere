@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Iterable, Awaitable, Callable, Mapping
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -192,6 +192,15 @@ class RuntimeInstanceHost(RuntimeHostClient):
         if self.source_key is not None:
             namespace = f"{namespace}:{_source_key_digest(self.source_key)}"
         return f"{self.connector_id}:{self.instance.runtime_type}:{namespace}"
+
+    async def publish_runtime_snapshot(
+        self, runtime: str, session_id: str, meta: dict[str, Any], items: Iterable[dict[str, Any]],
+        *, runtime_id: str | None = None, on_progress: UploadProgress | None = None,
+    ) -> None:
+        self._validate_native_runtime(runtime)
+        await self.base.publish_runtime_snapshot(
+            runtime, session_id, meta, items, runtime_id=self.instance.runtime_id, on_progress=on_progress,
+        )
 
     async def publish_runtime_notifications(
         self, runtime: str, notifications: list[dict[str, Any]], *, runtime_id: str | None = None,

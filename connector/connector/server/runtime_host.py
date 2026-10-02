@@ -3,7 +3,7 @@ from __future__ import annotations
 import time
 import asyncio
 import copy
-from collections.abc import Awaitable, Callable, Mapping
+from collections.abc import Iterable, Awaitable, Callable, Mapping
 from typing import Any
 
 from connector.logging import logger
@@ -45,6 +45,7 @@ class ConnectorRuntimeHost(RuntimeHostClient):
         sync_state_store: SyncStateStore | None = None,
         ingest_notifications: Callable[..., Awaitable[None]] | None = None,
         *,
+        ingest_snapshot: Callable[..., Awaitable[None]] | None = None,
         defer_payload_projection: bool = False,
     ) -> None:
         self._connector_id = connector_id
@@ -53,6 +54,7 @@ class ConnectorRuntimeHost(RuntimeHostClient):
         self._sync_state_store = sync_state_store
         self._memory_sync_state: dict[str, Mapping[str, Any]] = {}
         self._ingest_notifications = ingest_notifications
+        self._ingest_snapshot = ingest_snapshot
         self._defer_payload_projection = defer_payload_projection
         self._runtime_storage = RuntimeStorageManager(sync_state_store) if isinstance(sync_state_store, JsonSyncStateStore) else None
         self._runtime_kv = None
@@ -72,6 +74,14 @@ class ConnectorRuntimeHost(RuntimeHostClient):
 
     def flush_runtime_storage(self) -> bool:
         return self._runtime_storage.flush() if self._runtime_storage is not None else False
+
+    async def publish_runtime_snapshot(
+        self, runtime: str, session_id: str, meta: dict[str, Any], items: Iterable[dict[str, Any]],
+        *, runtime_id: str | None = None, on_progress: UploadProgress | None = None,
+    ) -> None:
+        if self._ingest_snapshot is None:
+            raise RuntimeError("Snapshot ingestion is unavailable")
+        await self._ingest_snapshot(runtime, runtime_id or runtime, session_id, meta, items, on_progress=on_progress)
 
     async def publish_runtime_notifications(
         self, runtime: str, notifications: list[dict[str, Any]], *, runtime_id: str | None = None,
