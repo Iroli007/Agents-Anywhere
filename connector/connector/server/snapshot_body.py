@@ -11,7 +11,7 @@ from connector.server.runtime_rpc_payloads import server_payload_without_turn_da
 
 def snapshot_body(
     runtime: str, runtime_id: str, session_id: str,
-    meta: dict[str, Any], items: Iterable[dict[str, Any]],
+    meta: dict[str, Any], items: Iterable[dict[str, Any]], through_seq: int,
 ) -> BinaryIO:
     body = tempfile.TemporaryFile(mode="w+b")  # noqa: SIM115 - ownership transfers to the async uploader
     encoder = json.JSONEncoder(ensure_ascii=False, separators=(",", ":"), allow_nan=False, sort_keys=True)
@@ -21,11 +21,14 @@ def snapshot_body(
             body.write(part.encode("utf-8"))
 
     try:
+        meta = dict(meta)
+        if isinstance(meta.get("sourceState"), dict):
+            meta["sourceState"] = {k: v for k, v in meta["sourceState"].items() if k != "observedAt"}
         binding = {"runtime": runtime, "runtimeId": runtime_id, "sessionId": session_id}
         body.write(b'{"notifications":[')
         encode({"method": "session.meta.upsert", "params": {**meta, **binding}})
         body.write(b',{"method":"timeline.sync","params":')
-        params = {**binding, "externalSessionId": meta["externalSessionId"], "complete": True}
+        params = {**binding, "externalSessionId": meta["externalSessionId"], "complete": True, "snapshotSeq": through_seq}
         # Leave the final object open to encode items one at a time.
         encode(params)
         body.seek(-1, 1)

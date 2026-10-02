@@ -11,7 +11,7 @@ from connector.logging import logger
 from connector.runtime_protocol.host import UploadProgress
 from connector.server.auth import ConnectorAuthenticationError
 from connector.server.errors import ConnectorNetworkError
-from connector.server.snapshot_body import snapshot_body
+from connector.server.snapshot_body import body_digest, snapshot_body
 from connector.server.urls import api_v2_url
 
 # HTTP ingest owns explicit bulk sync and disconnected WebSocket fallback.
@@ -80,9 +80,9 @@ class ConnectorIngestClient:
 
     async def ingest_snapshot(
         self, runtime: str, runtime_id: str, session_id: str,
-        meta: dict[str, Any], items: Iterable[dict[str, Any]], *, on_progress: UploadProgress | None = None,
+        meta: dict[str, Any], items: Iterable[dict[str, Any]], through_seq: int, *, on_progress: UploadProgress | None = None,
     ) -> None:
-        task = asyncio.create_task(asyncio.to_thread(snapshot_body, runtime, runtime_id, session_id, meta, items))
+        task = asyncio.create_task(asyncio.to_thread(snapshot_body, runtime, runtime_id, session_id, meta, items, through_seq))
         try:
             body = await asyncio.shield(task)
         except asyncio.CancelledError:
@@ -93,13 +93,12 @@ class ConnectorIngestClient:
                 self._posting = True
                 try:
                     await self._drain_pending(on_progress)
-                    token = await self._access_token_provider(False)
                     client = self._http_client_getter()
                     owned = client is None
                     if client is None:
                         client = self._http_client_factory(60)
                     try:
-                        await self._send_with_auth(lambda token: self._post_snapshot_body(client, token, body, on_progress), token)
+                        await self._upload_snapshot(client, body, session_id, runtime_id, through_seq, on_progress)
                     finally:
                         if owned:
                             await client.aclose()
@@ -110,22 +109,52 @@ class ConnectorIngestClient:
         finally:
             body.close()
 
-    async def _post_snapshot_body(self, client, token, body: BinaryIO, on_progress):
-        body.seek(0, 2)
-        size = body.tell()
-        body.seek(0)
+    async def _upload_snapshot(self, client, body: BinaryIO, session_id, runtime_id, through_seq, on_progress):
+        digest_task = asyncio.create_task(asyncio.to_thread(body_digest, body))
+        try:
+            upload_id, size = await asyncio.shield(digest_task)
+        except asyncio.CancelledError:
+            await digest_task
+            raise
+        manifest = {"uploadId": upload_id, "sessionId": session_id, "runtimeId": runtime_id,
+                    "throughSeq": through_seq, "totalBytes": size}
+        root = api_v2_url(self._server_url, "/connector/ingest/uploads")
 
-        async def stream():
-            while chunk := body.read(UPLOAD_CHUNK_BYTES):
-                yield chunk
-                if on_progress is not None:
-                    await on_progress(len(chunk))
+        async def request(method, url, *, payload=None, chunk=None):
+            async def send(token):
+                if chunk is None:
+                    return await client.request(method, url, headers={"Authorization": f"Bearer {token}"}, json=payload, timeout=60)
+                async def stream():
+                    for offset in range(0, len(chunk), UPLOAD_CHUNK_BYTES):
+                        part = chunk[offset:offset + UPLOAD_CHUNK_BYTES]
+                        yield part
+                        if on_progress is not None:
+                            await on_progress(len(part))
+                return await client.request(method, url, headers={"Authorization": f"Bearer {token}",
+                    "Content-Type": "application/octet-stream", "Content-Length": str(len(chunk))}, content=stream(), timeout=60)
+            return await self._send_with_auth(send, await self._access_token_provider(False))
 
-        return await client.post(
-            api_v2_url(self._server_url, "/connector/ingest"),
-            headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json", "Content-Length": str(size)},
-            content=stream(), timeout=60,
-        )
+        state = (await request("POST", root, payload=manifest)).json()
+        if type(state.get("committed")) is not bool:
+            raise ValueError("Invalid snapshot commit status")
+        if state["committed"]:
+            return
+        chunk_bytes = state["chunkBytes"]
+        if chunk_bytes != 262_144:
+            raise ValueError("Unsupported snapshot chunk size")
+        received = set(state["receivedChunks"])
+        total_chunks = (size + chunk_bytes - 1) // chunk_bytes
+        if any(type(i) is not int or not 0 <= i < total_chunks for i in received):
+            raise ValueError("Invalid snapshot upload status")
+        for index in range(total_chunks):
+            if index in received:
+                continue
+            body.seek(index * chunk_bytes)
+            chunk = body.read(chunk_bytes)
+            await request("PUT", f"{root}/{upload_id}/chunks/{index}", chunk=chunk)
+        result = (await request("POST", f"{root}/{upload_id}/commit")).json()
+        if result.get("committed") is not True:
+            raise ConnectorIngestRejectedError("Snapshot was not committed")
 
     async def flush_loop(self) -> None:
         """Keep a failed batch at the head; cancellation leaves it recoverable.

@@ -136,7 +136,7 @@ class SyncRelay:
                     raise ValueError("Incomplete snapshot; previous backend history remains intact")
                 kwargs = {"on_progress": self.on_progress} if self.on_progress is not None else {}
                 await self.host.publish_runtime_snapshot(
-                    "dsh", op["sessionId"], self.snapshot["meta"], self.iter_items(), **kwargs,
+                    "dsh", op["sessionId"], self.snapshot["meta"], self.iter_items(), self.snapshot["throughSeq"], **kwargs,
                 )
                 self.clear_snapshot()
             else:

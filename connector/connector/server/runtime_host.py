@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import time
 import asyncio
 import copy
-from collections.abc import Iterable, Awaitable, Callable, Mapping
+import time
+from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Any
 
 from connector.logging import logger
@@ -27,8 +27,12 @@ from connector.server.runtime_rpc_payloads import (
     session_notice_payload,
     session_source_observation_payload,
 )
-from connector.server.sync_state import JsonSyncStateStore, RuntimeSyncState, SyncStateStore
 from connector.server.runtime_storage import RuntimeStorageManager
+from connector.server.sync_state import (
+    JsonSyncStateStore,
+    RuntimeSyncState,
+    SyncStateStore,
+)
 
 BackendNotifier = Callable[[str, dict[str, Any]], Awaitable[None]]
 AttachmentDownloader = Callable[[str, str], Awaitable[tuple[bytes, str, str]]]
@@ -76,12 +80,12 @@ class ConnectorRuntimeHost(RuntimeHostClient):
         return self._runtime_storage.flush() if self._runtime_storage is not None else False
 
     async def publish_runtime_snapshot(
-        self, runtime: str, session_id: str, meta: dict[str, Any], items: Iterable[dict[str, Any]],
+        self, runtime: str, session_id: str, meta: dict[str, Any], items: Iterable[dict[str, Any]], through_seq: int,
         *, runtime_id: str | None = None, on_progress: UploadProgress | None = None,
     ) -> None:
         if self._ingest_snapshot is None:
             raise RuntimeError("Snapshot ingestion is unavailable")
-        await self._ingest_snapshot(runtime, runtime_id or runtime, session_id, meta, items, on_progress=on_progress)
+        await self._ingest_snapshot(runtime, runtime_id or runtime, session_id, meta, items, through_seq, on_progress=on_progress)
 
     async def publish_runtime_notifications(
         self, runtime: str, notifications: list[dict[str, Any]], *, runtime_id: str | None = None,

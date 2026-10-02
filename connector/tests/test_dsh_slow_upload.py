@@ -39,16 +39,23 @@ def test_slow_snapshot_upload_keeps_ack_pending_until_cloud_acceptance(reject):
             timer = asyncio.get_running_loop().call_later(0.15, expire)
 
         class SlowUplink(httpx.AsyncBaseTransport):
+            def __init__(self):
+                self.pages = {}
             async def handle_async_request(self, request):
-                chunks = []
-                async for chunk in request.stream:
-                    # 64 KiB takes 40 ms: total upload exceeds the 150 ms ACK window.
-                    await asyncio.sleep(0.04 * max(1, len(chunk) / 65_536))
-                    chunks.append(chunk)
-                bodies.append(json.loads(b"".join(chunks)))
+                if request.url.path.endswith("/uploads"):
+                    return httpx.Response(200, json={"chunkBytes": 262144, "receivedChunks": [], "committed": False})
+                if "/chunks/" in request.url.path:
+                    chunks = []
+                    async for chunk in request.stream:
+                        await asyncio.sleep(0.04 * max(1, len(chunk) / 65_536))
+                        chunks.append(chunk)
+                    self.pages[int(request.url.path.rsplit("/", 1)[1])] = b"".join(chunks)
+                    return httpx.Response(200, json={"received": True})
+                assert request.url.path.endswith("/commit")
+                bodies.append(json.loads(b"".join(self.pages[i] for i in sorted(self.pages))))
                 uploaded.set()
                 await release.wait()
-                return httpx.Response(200, json={"rejected": [{"method": "timeline.sync", "code": "invalid", "message": "rejected"}]} if reject else {})
+                return httpx.Response(200, json={"committed": not reject, "rejected": [{"method": "timeline.sync", "code": "invalid", "message": "rejected"}]} if reject else {"committed": True})
 
         async with httpx.AsyncClient(transport=SlowUplink()) as http:
             ingest = ConnectorIngestClient("http://test", AsyncMock(return_value="token"), lambda: http, lambda _: http)

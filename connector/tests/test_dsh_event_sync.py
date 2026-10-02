@@ -27,7 +27,7 @@ def item(item_id="one", session_id="session"):
 
 def host():
     receiver = SimpleNamespace(publish_runtime_notifications=AsyncMock(), sync_state_write=AsyncMock(), runtime_health_update=AsyncMock())
-    async def snapshot(runtime, session_id, meta, items, **kwargs):
+    async def snapshot(runtime, session_id, meta, items, through_seq, **kwargs):
         await receiver.publish_runtime_notifications(runtime, [
             {"method": "session.meta.upsert", "params": {"sessionId": session_id, **meta}},
             {"method": "timeline.sync", "params": {"sessionId": session_id, "externalSessionId": meta["externalSessionId"], "items": list(items), "complete": True}},
