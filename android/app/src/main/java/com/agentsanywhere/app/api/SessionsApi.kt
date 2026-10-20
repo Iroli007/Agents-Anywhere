@@ -154,11 +154,6 @@ class SessionsApi(
             put("content", request.content)
             request.title?.takeIf(String::isNotBlank)?.let { put("title", it) }
             request.cwd?.takeIf(String::isNotBlank)?.let { put("cwd", it) }
-            if (request.runtimeType == "dsh") {
-                request.agentPreset?.takeIf(String::isNotBlank)?.let {
-                    put("runtimeOptions", JSONObject().put("agentPreset", it))
-                }
-            }
             request.selections.filterValues(String::isNotBlank).takeIf { it.isNotEmpty() }?.let {
                 put("selections", JSONObject(it))
             }
@@ -491,31 +486,6 @@ class SessionsApi(
         return client.postJson(
             serverUrl = serverUrl,
             path = "/sessions/${sessionId.urlEncode()}/runtime/messages",
-            body = body,
-            authorizationToken = authorizationToken,
-        ).toRemoteRpcResponse()
-    }
-
-    fun steerSession(
-        serverUrl: String,
-        authorizationToken: String,
-        sessionId: String,
-        content: String,
-        clientMessageId: String,
-        attachments: List<RemoteAttachmentRef> = emptyList(),
-    ): RemoteRpcResponse {
-        val body = JSONObject()
-            .put("content", content)
-            .put("clientMessageId", clientMessageId)
-        if (attachments.isNotEmpty()) {
-            body.put(
-                "attachments",
-                JSONArray(attachments.map { JSONObject().put("fileId", it.fileId) }),
-            )
-        }
-        return client.postJson(
-            serverUrl = serverUrl,
-            path = "/sessions/${sessionId.urlEncode()}/runtime/steer",
             body = body,
             authorizationToken = authorizationToken,
         ).toRemoteRpcResponse()
@@ -1015,7 +985,6 @@ class SessionsApi(
             ok = optBoolean("ok", false),
             errorCode = error?.optNullableString("code"),
             errorMessage = error?.optNullableString("message"),
-            result = optJSONObject("result").toMap(),
         )
     }
 

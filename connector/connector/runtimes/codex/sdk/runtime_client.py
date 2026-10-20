@@ -50,7 +50,6 @@ class CodexStartTurnRequest:
     approvals_reviewer: str | None = None
     sandbox: str | None = None
     attachments: tuple[CodexTurnInputAttachment, ...] = ()
-    collaboration_mode: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

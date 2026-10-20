@@ -64,10 +64,11 @@ export function PinnedSection({
                 controller={projectController}
                 sessionStatus={projectSessionStatus}
               />
-              {sessions.map((item) => (
+              {sessions.map((item, index) => (
                 <SessionSidebarItem
                   key={`session-${item.id}`}
                   item={item}
+                  previousConnectorId={sessions[index - 1]?.connectorId}
                   meta={sessionMeta?.(item) ?? null}
                   isActive={projectController.activeSessionId === item.id}
                   onOpen={() => onOpenSession(item.id)}

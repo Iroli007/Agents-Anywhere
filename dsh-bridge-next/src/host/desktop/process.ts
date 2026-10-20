@@ -39,6 +39,17 @@ function hasArgument(commandLine: string, argument: string, platform: string): b
   })
 }
 
+function isBundledDevExecutable(executablePath: string, appPath: string, platform: string): boolean {
+  const exe = (platform === 'win32' ? executablePath.toLowerCase() : executablePath).replaceAll('\\', '/')
+  const root = (platform === 'win32' ? appPath.toLowerCase() : appPath).replaceAll('\\', '/').replace(/\/+$/, '')
+  return Boolean(root) && exe.startsWith(`${root}/node_modules/`)
+}
+
+function matchesLaunchArgument(target: DesktopProcessTarget, commandLine: string, argument: string, platform: string): boolean {
+  if (hasArgument(commandLine, argument, platform)) return true
+  return isBundledDevExecutable(target.executablePath, argument, platform) && hasArgument(commandLine, '.', platform)
+}
+
 /** Never confuse Electron renderer/GPU helpers or another development Electron app with Main. */
 export function matchesDesktopProcess(target: DesktopProcessTarget, candidate: DesktopProcessCandidate, platform: string): boolean {
   const executableMatches = candidate.executablePath !== undefined && samePath(candidate.executablePath, target.executablePath, platform)
@@ -47,7 +58,7 @@ export function matchesDesktopProcess(target: DesktopProcessTarget, candidate: D
     candidate.executablePath?.startsWith(`${candidate.appDir}/`)
   if (!executableMatches && !appImageMatches) return false
   if (HELPER_ARGUMENT.test(candidate.commandLine) || BACKEND_ARGUMENT.test(candidate.commandLine) || candidate.electronRunAsNode) return false
-  return target.packaged || target.launchArgs.every(argument => hasArgument(candidate.commandLine, argument, platform))
+  return target.packaged || target.launchArgs.every(argument => matchesLaunchArgument(target, candidate.commandLine, argument, platform))
 }
 
 async function macProcesses(): Promise<DesktopProcessCandidate[]> {
@@ -59,12 +70,21 @@ async function macProcesses(): Promise<DesktopProcessCandidate[]> {
 
 async function windowsProcesses(target: DesktopProcessTarget): Promise<DesktopProcessCandidate[]> {
   const name = basename(target.executablePath.replaceAll('\\', '/')).replaceAll("'", "''")
-  const script = `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); @(Get-CimInstance Win32_Process -Filter "Name = '${name}'" | Select-Object ExecutablePath,CommandLine) | ConvertTo-Json -Compress`
+  // A denied or unavailable CIM query also prints nothing; Stop makes it exit non-zero
+  // instead, so an empty result can only mean that no process matched. The encoding line stays non-fatal.
+  const script = `[Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $ErrorActionPreference = 'Stop'; @(Get-CimInstance Win32_Process -Filter "Name = '${name}'" | Select-Object ExecutablePath,CommandLine) | ConvertTo-Json -Compress`
   const encoded = Buffer.from(script, 'utf16le').toString('base64')
   const { stdout } = await run('powershell.exe', ['-NoProfile', '-NonInteractive', '-EncodedCommand', encoded], {
     timeout: 5_000, windowsHide: true, maxBuffer: 2 * 1024 * 1024,
   })
-  const result: unknown = JSON.parse(stdout.replace(/^\uFEFF/, '').trim())
+  return parseWindowsProcesses(stdout)
+}
+
+/** ConvertTo-Json receives no input when no process matches and prints nothing, not `[]`. */
+export function parseWindowsProcesses(stdout: string): DesktopProcessCandidate[] {
+  const output = stdout.replace(/^\uFEFF/, '').trim()
+  if (!output) return []
+  const result: unknown = JSON.parse(output)
   const entries = Array.isArray(result) ? result : result ? [result] : []
   return entries.flatMap((entry: unknown) => {
     if (!entry || typeof entry !== 'object') return []

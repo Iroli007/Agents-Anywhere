@@ -26,7 +26,6 @@ data class DeviceRuntime(
     val schema: Map<String, Any?>?,
     val uiSchema: Map<String, Any?>,
     val config: Map<String, Any?>?,
-    val defaults: Map<String, Any?> = emptyMap(),
     val error: Map<String, Any?>?,
     val lastDiscoveredAt: String?,
     val updatedAt: String?,
@@ -100,6 +99,22 @@ data class DeviceRuntimeManagementState(
         return copy(
             connectorId = runtime.connectorId,
             runtimes = next.sortedWith(deviceRuntimeComparator),
+            errorMessage = null,
+            errorFromDiscovery = false,
+        )
+    }
+
+    /**
+     * Deletion removes the instance; the response is its final state under the
+     * same ID. A server that still returns an unconfigured successor under a new
+     * ID keeps that successor in the list.
+     */
+    fun afterDeletion(deletedId: String, response: DeviceRuntime): DeviceRuntimeManagementState {
+        if (response.id != deletedId) {
+            return copy(runtimes = runtimes.filterNot { it.id == deletedId }).replace(response)
+        }
+        return copy(
+            runtimes = runtimes.filterNot { it.id == deletedId },
             errorMessage = null,
             errorFromDiscovery = false,
         )
@@ -237,7 +252,6 @@ internal fun RemoteDeviceRuntime.toDeviceRuntime(): DeviceRuntime {
         schema = schema,
         uiSchema = uiSchema,
         config = config,
-        defaults = defaults,
         error = error,
         lastDiscoveredAt = lastDiscoveredAt,
         updatedAt = updatedAt,

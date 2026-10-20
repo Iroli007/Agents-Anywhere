@@ -63,6 +63,7 @@ import com.agentsanywhere.app.feature.sessiondetail.RuntimeInputRequestForm
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeInputRequestQuestion
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNotice
 import com.agentsanywhere.app.feature.sessiondetail.RuntimeNoticeAction
+import com.agentsanywhere.app.feature.sessiondetail.argumentHint
 import com.agentsanywhere.app.feature.sessiondetail.buildPayload
 import com.agentsanywhere.app.feature.sessiondetail.coerceInput
 import com.agentsanywhere.app.feature.sessiondetail.inputRequestForm
@@ -82,18 +83,21 @@ import com.composables.icons.lucide.TriangleAlert
 import com.composables.icons.lucide.X
 import kotlinx.coroutines.delay
 
+/**
+ * Prefix-matched catalog commands for a slash draft. Blocked rows stay visible
+ * with their reason so the user learns why a command cannot run right now.
+ */
 @Composable
 internal fun RuntimeCommandSuggestions(
     commands: List<RuntimeCommand>,
-    query: String,
     loading: Boolean,
     errorMessage: String?,
-    onRetry: () -> Unit,
+    onRetry: (() -> Unit)?,
+    blockReason: (RuntimeCommand) -> String?,
     onSelect: (RuntimeCommand) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = LocalAAColors.current
-    val matches = remember(commands, query) { commands.filter { it.matches(query) }.take(6) }
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -104,13 +108,14 @@ internal fun RuntimeCommandSuggestions(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         when {
-            loading -> Text(stringResource(R.string.session_commands_loading), color = colors.muted)
-            errorMessage != null -> {
+            loading && commands.isEmpty() -> Text(stringResource(R.string.session_commands_loading), color = colors.muted)
+            errorMessage != null && commands.isEmpty() -> {
                 Text(errorMessage, color = colors.errorText, fontSize = 13.sp)
-                TextButton(onClick = onRetry) { Text(stringResource(R.string.common_retry)) }
+                onRetry?.let { TextButton(onClick = it) { Text(stringResource(R.string.common_retry)) } }
             }
-            matches.isEmpty() -> Text(stringResource(R.string.session_commands_empty), color = colors.muted)
-            else -> matches.forEach { command ->
+            commands.isEmpty() -> Text(stringResource(R.string.session_commands_empty), color = colors.muted)
+            else -> commands.forEach { command ->
+                val reason = blockReason(command)
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -118,13 +123,38 @@ internal fun RuntimeCommandSuggestions(
                         .noRippleClickable { onSelect(command) }
                         .padding(horizontal = 10.dp, vertical = 8.dp),
                 ) {
-                    Text(
-                        text = "/${command.id}  ${command.title}",
-                        color = colors.ink.copy(alpha = if (command.enabled) 1f else 0.45f),
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    (command.disabledReason ?: command.description)?.takeIf(String::isNotBlank)?.let {
-                        Text(it, color = colors.muted, fontSize = 12.sp)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            text = "/${command.id}",
+                            color = colors.ink.copy(alpha = if (reason == null) 1f else 0.45f),
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        command.argumentHint?.takeIf(String::isNotBlank)?.let { hint ->
+                            Text(
+                                text = " $hint",
+                                color = colors.muted,
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(Modifier.size(width = 10.dp, height = 1.dp))
+                        Text(
+                            text = command.title,
+                            color = colors.muted.copy(alpha = if (reason == null) 1f else 0.6f),
+                            fontSize = 13.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    (reason ?: command.description)?.takeIf(String::isNotBlank)?.let {
+                        Text(
+                            it,
+                            color = if (reason != null) colors.errorText else colors.muted,
+                            fontSize = 12.sp,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }

@@ -61,7 +61,6 @@ data class RemoteSessionCreateAndStartRequest(
     val clientMessageId: String?,
     val runtimeId: String = runtime,
     val runtimeType: String = runtime,
-    val agentPreset: String? = null,
 )
 
 data class RemoteInlineAttachmentRef(
@@ -206,7 +205,6 @@ data class RemoteRpcResponse(
     val ok: Boolean,
     val errorCode: String?,
     val errorMessage: String?,
-    val result: Map<String, Any?> = emptyMap(),
 )
 
 data class RemoteSessionSelectionPatchResponse(

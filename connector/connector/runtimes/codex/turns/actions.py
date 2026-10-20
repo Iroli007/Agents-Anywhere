@@ -60,7 +60,6 @@ class CodexTurnActions:
         attachments: tuple[RuntimeAttachment, ...] = (),
         client_message_id: str | None = None,
         cwd: str | None = None,
-        collaboration_mode: str | None = None,
     ) -> RuntimeOperationResult:
         _ = cwd
         if self.client is None or external_session_id is None:
@@ -120,6 +119,7 @@ class CodexTurnActions:
                 self.host,
                 session_id,
                 attachments,
+                self.notices,
             )
             result = await self.client.start_turn(
                 CodexStartTurnRequest(
@@ -132,7 +132,6 @@ class CodexTurnActions:
                     approvals_reviewer=native_permission.approvals_reviewer,
                     sandbox=native_permission.sandbox,
                     attachments=codex_attachments,
-                    collaboration_mode=collaboration_mode,
                 )
             )
         except Exception as exc:
@@ -266,6 +265,7 @@ class CodexTurnActions:
             self.host,
             session_id,
             attachments,
+            self.notices,
         )
         effective_content = content_with_codex_attachment_notes(
             content,

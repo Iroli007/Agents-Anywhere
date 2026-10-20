@@ -22,7 +22,6 @@ data class NewSessionDraft(
     val attachmentsEnabled: Boolean = true,
     val localSessionId: String = newLocalSessionId(),
     val projectId: String = "",
-    val agentPreset: String? = null,
 ) {
     fun previewSession(): AgentSession {
         return AgentSession(
@@ -80,5 +79,4 @@ internal fun NewSessionDraft.firstMessageRequest(
     runtimeId = runtimeId,
     runtimeType = runtimeType,
     projectId = projectId,
-    agentPreset = agentPreset,
 )

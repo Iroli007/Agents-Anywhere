@@ -58,7 +58,6 @@ import com.agentsanywhere.app.ui.screens.home.ArchivedSessionsScreen
 import com.agentsanywhere.app.ui.screens.home.HomeScreen
 import com.agentsanywhere.app.ui.screens.home.HomeTab
 import com.agentsanywhere.app.ui.screens.home.NewSessionScreen
-import com.agentsanywhere.app.feature.sessiondetail.SessionMessageQueueStore
 import com.agentsanywhere.app.ui.screens.sessiondetail.SessionComposerDraftStore
 import com.agentsanywhere.app.ui.screens.sessiondetail.SessionDetailScreen
 import com.agentsanywhere.app.ui.screens.terminal.TerminalScreen
@@ -139,7 +138,6 @@ internal fun AgentsAnywhereNavHost(
     onPreparedSessionCreated: (AgentSession) -> Unit,
     onListDirectory: suspend (String, String, String) -> Result<NewSessionDirectory>,
     onListNewSessionRuntimes: suspend (String) -> Result<DeviceRuntimeList>,
-    onDiscoverNewSessionRuntimes: suspend (String) -> Result<DeviceRuntimeList>,
     onLoadNewSessionRuntimeCapabilities: suspend (String, String) -> Result<NewSessionRuntimeCapabilities>,
     onLoadNewSessionModelCatalog: suspend (String, String) -> Result<NewSessionModelCatalog>,
     onLoadNewSessionPermissionCatalog: suspend (String, String) -> Result<NewSessionPermissionCatalog>,
@@ -158,10 +156,6 @@ internal fun AgentsAnywhereNavHost(
     )
     val sessionComposerDraftStore = remember(context, userId) {
         SessionComposerDraftStore(context.applicationContext, userId)
-    }
-
-    val sessionMessageQueueStore = remember(context, serverUrl, userId) {
-        SessionMessageQueueStore(context.applicationContext, "$serverUrl/$userId")
     }
 
     Surface(
@@ -254,7 +248,6 @@ internal fun AgentsAnywhereNavHost(
                     userId = userId,
                     onListDirectory = onListDirectory,
                     onListRuntimes = onListNewSessionRuntimes,
-                    onDiscoverRuntimes = onDiscoverNewSessionRuntimes,
                     onLoadRuntimeCapabilities = onLoadNewSessionRuntimeCapabilities,
                     onLoadModelCatalog = onLoadNewSessionModelCatalog,
                     onLoadPermissionCatalog = onLoadNewSessionPermissionCatalog,
@@ -279,14 +272,12 @@ internal fun AgentsAnywhereNavHost(
                     onPreparedSessionCreated = onPreparedSessionCreated,
                     onLoadPreparedModelCatalog = onLoadNewSessionModelCatalog,
                     onLoadPreparedPermissionCatalog = onLoadNewSessionPermissionCatalog,
-                    onDiscoverRuntimes = onDiscoverNewSessionRuntimes,
                     devices = sessionsState.devices,
                     controller = sessionDetailController,
                     realtimeController = sessionRealtimeController,
                     filesController = filesController,
                     terminalPool = remoteTerminalPool,
                     composerDraftStore = sessionComposerDraftStore,
-                    messageQueueStore = sessionMessageQueueStore,
                     onSessionChanged = onSessionChanged,
                 )
                 AppDestination.DeviceDetail -> DeviceDetailScreen(
@@ -298,7 +289,6 @@ internal fun AgentsAnywhereNavHost(
                     onRenameDevice = onRenameDevice,
                     onDeleteDevice = onDeleteDevice,
                     onPrepareDeviceSetup = onPrepareDeviceSetup,
-                    onClaimDevicePairCode = onClaimDevicePairCode,
                     onListDeviceRuntimes = onListDeviceRuntimes,
                     onSetDeviceRuntimeActive = { connectorId, runtime, active ->
                         onSetDeviceRuntimeActive(connectorId, runtime, active).onSuccess {

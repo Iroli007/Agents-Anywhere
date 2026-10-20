@@ -24,24 +24,16 @@ The client supports Android 8.0+ (API 26), sessions, devices, runtime configurat
 approvals, files and terminals through the v2 API. Cloud is the default service;
 a self-hosted address can be selected in the login flow.
 
-## Messages during a running turn
-
-The composer defaults to **Queue** while the agent is busy. **Steer now** is available
-when the running agent supports receiving an instruction in the current turn.
-Queued messages retain their uploaded attachments and runtime selections, and
-can be edited, deleted, or sent immediately. **Send now** interrupts the current
-turn and waits for the session to become idle before sending the chosen message.
-The queue is attached to the upper edge of the composer. Editing opens a text
-field directly in the queued row, with Save and Cancel beside it. The editor
-shares the composer's text input component; the regular draft and queued
-attachments remain unchanged.
-
-Queues are saved locally per server/account/session. Automatic sending runs while
-that session is open in the foreground, connected, idle, and taken over. Stopping
-a turn also pauses its queue; a successful fresh send while idle resumes it.
-A failed send holds later messages until retried or deleted. Requests
-interrupted by an app restart are shown as failed for explicit retry, using the
-same client message ID.
+QR sign-in stores a mobile refresh token valid for 30 days. Authenticated JSON
+and file-upload requests that return 401 refresh the access token through
+`POST /api/v2/auth/mobile-login/refresh` and retry once. Concurrent 401s share
+one refresh. A missing or rejected refresh token, or a retry that still returns
+401, sends the user back to sign-in; network and server errors preserve the
+saved session. Refreshing does not extend the original refresh-token expiry.
+Project loading tracks the saved login independently of the access token, so a
+successful refresh keeps the request's results and clears its loading state.
+Terminal connections and reconnects validate the session before opening their
+WebSocket and use the current access token while preserving the replay cursor.
 
 ## Build from the command line
 

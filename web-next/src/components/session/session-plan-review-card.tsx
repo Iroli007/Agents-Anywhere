@@ -6,7 +6,6 @@ import { useTranslations } from "next-intl"
 
 import { MarkdownText } from "@/components/markdown-text"
 import { Button } from "@/components/ui/button"
-import { usePlanDraft, useSessionFilePreviewOpener } from "@/components/session/session-file-preview-context"
 import { Textarea } from "@/components/ui/textarea"
 import type { InteractionCardProps } from "@/components/session/session-approval-card"
 
@@ -17,13 +16,13 @@ export function PlanReviewCard({
 }: InteractionCardProps) {
   const isCodex = notice.source.component === "codex.plan_review"
   const t = useTranslations("dashboard.session")
-  const openFilePreview = useSessionFilePreviewOpener()
-  const draft = usePlanDraft(notice.noticeId, notice.message ?? "")
-  const { text: plan, loaded: documentLoaded } = React.useSyncExternalStore(draft.subscribe, draft.getSnapshot, draft.getSnapshot)
+  const plan = notice.message ?? ""
+  const [expanded, setExpanded] = React.useState(false)
   const [permission, setPermission] = React.useState("approve_manual")
   const [editingFeedback, setEditingFeedback] = React.useState(false)
   const [feedback, setFeedback] = React.useState("")
   React.useEffect(() => {
+    setExpanded(false)
     setPermission("approve_manual")
     setFeedback("")
     setEditingFeedback(false)
@@ -31,7 +30,7 @@ export function PlanReviewCard({
 
   const resolving = resolvingNoticeId === notice.noticeId
   const pending = notice.responseRequired
-  const disabled = resolvingNoticeId !== null || !pending || !documentLoaded
+  const disabled = resolvingNoticeId !== null || !pending
     || ["responding", "response_accepted", "resolving"].includes(notice.status)
   const mode = notice.context.automatedPermissionMode
   const automatedLabel = mode === "auto" ? t("planApproveAuto")
@@ -56,16 +55,15 @@ export function PlanReviewCard({
         </div>
         <div className="flex items-center gap-2">
           <span role="status" className="rounded-full border border-primary/20 bg-background px-2 py-0.5 text-xs text-muted-foreground">{status}</span>
-          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("planViewFull")} title={t("planViewFull")} disabled={!openFilePreview} onClick={() => openFilePreview?.({ source: "plan", name: t("planReviewTitle"), path: notice.noticeId, root: "", planDraft: draft })}>
+          <Button type="button" variant="ghost" size="icon-sm" aria-label={t("planViewFull")} title={t("planViewFull")} aria-expanded={expanded} onClick={() => setExpanded(!expanded)}>
             <Maximize2 className="size-4" aria-hidden="true" />
           </Button>
         </div>
       </header>
-      <div className="relative h-48 overflow-hidden" aria-hidden="true" inert>
+      <div className={expanded ? "max-h-[32rem] overflow-auto" : "max-h-48 overflow-hidden"}>
         <div className="px-4 py-4">
           {notice.message ? <MarkdownText text={plan} /> : null}
         </div>
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-card to-transparent" />
       </div>
       {notice.actions.length > 0 ? (
         <div className="space-y-2 border-t border-border bg-muted/30 p-3">
@@ -81,7 +79,7 @@ export function PlanReviewCard({
             </select>
             </> : null}
             <Button type="button" size="sm" variant="outline" disabled={disabled || !plan.trim()}
-              onClick={() => onRespondInteraction(notice.noticeId, isCodex ? "implement_plan" : permission, { plan: draft.getSnapshot().text })}>
+              onClick={() => onRespondInteraction(notice.noticeId, isCodex ? "implement_plan" : permission, { plan: plan })}>
               {resolving ? <Loader2 className="size-3.5 animate-spin" aria-hidden="true" /> : <Check className="size-3.5" aria-hidden="true" />}
               {t("planApproveExecute")}
             </Button>
@@ -96,7 +94,7 @@ export function PlanReviewCard({
               <Textarea id={feedbackId} value={feedback} onChange={(event) => setFeedback(event.target.value)}
                 placeholder={t("planFeedbackPlaceholder")} disabled={disabled} rows={2} className="resize-y bg-background" />
               <Button type="button" size="sm" variant="outline" disabled={disabled || !feedback.trim()}
-                onClick={() => onRespondInteraction(notice.noticeId, "revise_plan", { feedback: feedback.trim(), plan: draft.getSnapshot().text })}>
+                onClick={() => onRespondInteraction(notice.noticeId, "revise_plan", { feedback: feedback.trim(), plan: plan })}>
                 {t("planSubmit")}
               </Button>
             </div>

@@ -8,6 +8,33 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from openai_codex import InvalidRequestError
+from openai_codex.generated.v2_all import (
+    AgentMessageThreadItem,
+    ApprovalsReviewer,
+    AskForApprovalValue,
+    ContextCompactedNotification,
+    ContextCompactionThreadItem,
+    LocalImageUserInput,
+    MentionUserInput,
+    TextUserInput,
+    Thread,
+    ThreadItem,
+    Turn,
+    TurnError,
+    TurnStatus,
+    UserInput,
+    UserMessageThreadItem,
+)
+from openai_codex.models import (
+    AgentMessageDeltaNotification,
+    CommandExecutionOutputDeltaNotification,
+    ItemCompletedNotification,
+    Notification,
+    ReasoningTextDeltaNotification,
+    TurnCompletedNotification,
+)
+
 from connector.core.json_kv import JsonKeyValueStore
 from connector.runtime_protocol import (
     CAPABILITY_CATALOG_MODEL,
@@ -114,33 +141,6 @@ from connector.runtimes.codex.timeline.projection import (
     CodexTimelineProjection,
     timeline_item_from_projection,
     timeline_projection_from_raw,
-)
-from openai_codex import InvalidRequestError
-from openai_codex.generated.v2_all import (
-    AgentMessageThreadItem,
-    ApprovalsReviewer,
-    AskForApprovalValue,
-    ContextCompactedNotification,
-    ContextCompactionThreadItem,
-    LocalImageUserInput,
-    MentionUserInput,
-    PlanThreadItem,
-    TextUserInput,
-    Thread,
-    ThreadItem,
-    Turn,
-    TurnError,
-    TurnStatus,
-    UserInput,
-    UserMessageThreadItem,
-)
-from openai_codex.models import (
-    AgentMessageDeltaNotification,
-    CommandExecutionOutputDeltaNotification,
-    ItemCompletedNotification,
-    Notification,
-    ReasoningTextDeltaNotification,
-    TurnCompletedNotification,
 )
 
 
@@ -1828,9 +1828,9 @@ async def _test_codex_runtime_reports_idle_session_capabilities() -> None:
 
     assert capability_set.session_id == "sess_1"
     assert capabilities[CAPABILITY_SESSION_SEND_MESSAGE].available is True
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].supported is False
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is False
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].unavailable_reason == "unsupported"
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].supported is True
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is True
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].unavailable_reason is None
     assert capabilities[CAPABILITY_RUNTIME_ATTACHMENT].available is True
     assert capabilities[CAPABILITY_SESSION_INTERRUPT].available is False
     assert capabilities[CAPABILITY_SESSION_INTERRUPT].unavailable_reason == (
@@ -1905,7 +1905,7 @@ async def _test_codex_runtime_reports_running_session_capabilities() -> None:
     assert capabilities[CAPABILITY_SESSION_SEND_MESSAGE].unavailable_reason == (
         "session_running"
     )
-    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is False
+    assert capabilities[CAPABILITY_SESSION_COMMANDS].available is True
     assert capabilities[CAPABILITY_SESSION_INTERRUPT].available is True
     assert capabilities[CAPABILITY_SESSION_STEER].available is True
 
@@ -3736,6 +3736,126 @@ async def _test_codex_runtime_materializes_attachments_for_turn_start() -> None:
     assert attachment["byteSize"] == 5
 
 
+@pytest.mark.parametrize("operation", ["start", "steer"])
+@pytest.mark.parametrize(
+    "files", [(), ("good",), ("missing",), ("missing", "good", "unnamed")]
+)
+def test_codex_attachment_delivery_notices(
+    tmp_path, monkeypatch, operation, files
+) -> None:
+    monkeypatch.setenv("AGENT_CONNECTOR_ATTACHMENTS_ROOT", str(tmp_path))
+
+    async def run() -> None:
+        host = FakeHost()
+        client = FakeCodexClient()
+        runtime = CodexRuntime(config=_config(), host=host, client=client)
+        attempted = []
+
+        async def download(session_id, file_id):
+            attempted.append(file_id)
+            if file_id != "good":
+                raise OSError("download unavailable")
+            return RuntimeAttachmentContent(
+                file_id=file_id, name="good.txt", media_type="text/plain", content=b"ok"
+            )
+
+        monkeypatch.setattr(host, "attachment_download", download)
+        if operation == "steer":
+            await runtime.start_turn("sess_1", "thread_1", "hello")
+        attachments = tuple(
+            RuntimeAttachment(
+                file_id=file_id, name=None if file_id == "unnamed" else f"{file_id}.txt"
+            )
+            for file_id in files
+        )
+        send = runtime.start_turn if operation == "start" else runtime.steer_turn
+        result = await send("sess_1", "thread_1", "read this", attachments=attachments)
+
+        assert result.ok is True
+        assert attempted == list(files)
+        params = client.requests[-1][1]
+        if operation == "start":
+            assert [item["name"] for item in params.get("attachments", [])] == (
+                ["good.txt"] if "good" in files else []
+            )
+        else:
+            text = params["input"][0]["text"]
+            assert ("good.txt" in text) == ("good" in files)
+            assert "missing.txt" not in text
+        failed = [file_id for file_id in files if file_id != "good"]
+        if not failed:
+            assert host.notice_upserts == []
+            return
+        assert len(host.notice_upserts) == 1
+        notice = host.notice_upserts[0]
+        assert notice.type == "notification"
+        assert notice.severity == "warning"
+        assert notice.status == "open"
+        assert notice.blocking is None
+        assert notice.response_required is False
+        assert notice.context["failedFileIds"] == failed
+        assert "Please resend" in notice.message
+        assert "missing.txt" in notice.message
+        if "unnamed" in failed:
+            assert "- unnamed" in notice.message
+        assert await runtime.get_session_notices("sess_1") == (notice,)
+        assert await runtime.get_session_notices("other_session") == ()
+
+    asyncio.run(run())
+
+
+def test_codex_attachment_delivery_notice_reuses_id_and_resolves_on_success(
+    tmp_path, monkeypatch
+) -> None:
+    monkeypatch.setenv("AGENT_CONNECTOR_ATTACHMENTS_ROOT", str(tmp_path))
+
+    async def run() -> None:
+        host = FakeHost()
+        runtime = CodexRuntime(config=_config(), host=host, client=FakeCodexClient())
+        attachment = RuntimeAttachment(file_id="file_1", name="note.txt")
+        for _ in range(2):
+            await runtime.start_turn(
+                "sess_1", "thread_1", "read this", attachments=(attachment,)
+            )
+        assert len({notice.notice_id for notice in host.notice_upserts}) == 1
+        assert len(await runtime.get_session_notices("sess_1")) == 1
+        await runtime.start_turn("sess_1", "thread_1", "plain text")
+        assert len(await runtime.get_session_notices("sess_1")) == 1
+        host.attachments["file_1"] = RuntimeAttachmentContent(
+            file_id="file_1", name="note.txt", media_type="text/plain", content=b"ok"
+        )
+        await runtime.start_turn(
+            "sess_1", "thread_1", "retry", attachments=(attachment,)
+        )
+        assert host.notice_upserts[-1].status == "resolved"
+        assert await runtime.get_session_notices("sess_1") == ()
+
+    asyncio.run(run())
+
+
+def test_codex_attachment_download_cancellation_is_not_skipped(monkeypatch) -> None:
+    async def run() -> None:
+        host = FakeHost()
+        client = FakeCodexClient()
+        runtime = CodexRuntime(config=_config(), host=host, client=client)
+
+        async def download(session_id, file_id):
+            raise asyncio.CancelledError
+
+        monkeypatch.setattr(host, "attachment_download", download)
+        with pytest.raises(asyncio.CancelledError):
+            await runtime.start_turn(
+                "sess_1",
+                "thread_1",
+                "read this",
+                attachments=(RuntimeAttachment(file_id="file_1"),),
+            )
+        assert not any(method == "turn/start" for method, _ in client.requests)
+        assert host.notice_upserts == []
+
+    asyncio.run(run())
+
+
 def test_codex_runtime_materializes_create_and_start_attachments_from_host(
     tmp_path, monkeypatch
 ) -> None:
@@ -4036,11 +4156,11 @@ async def _test_codex_runtime_start_turn_carries_cached_session_selections() -> 
     assert turn_start[1]["sandbox"] == "danger-full-access"
 
 
-def test_codex_runtime_hides_commands_for_loaded_thread() -> None:
-    asyncio.run(_test_codex_runtime_hides_commands_for_loaded_thread())
+def test_codex_runtime_lists_commands_for_loaded_thread() -> None:
+    asyncio.run(_test_codex_runtime_lists_commands_for_loaded_thread())
 
 
-async def _test_codex_runtime_hides_commands_for_loaded_thread() -> None:
+async def _test_codex_runtime_lists_commands_for_loaded_thread() -> None:
     runtime = CodexRuntime(config=_config(), host=FakeHost(), client=FakeCodexClient())
 
     commands = await runtime.list_commands(
@@ -4049,26 +4169,29 @@ async def _test_codex_runtime_hides_commands_for_loaded_thread() -> None:
         query="comp",
     )
 
-    assert commands == ()
+    assert [command.id for command in commands] == ["compact"]
+    assert commands[0].enabled is True
 
 
-def test_codex_runtime_hides_commands_without_thread() -> None:
-    asyncio.run(_test_codex_runtime_hides_commands_without_thread())
+def test_codex_runtime_disables_commands_without_thread() -> None:
+    asyncio.run(_test_codex_runtime_disables_commands_without_thread())
 
 
-async def _test_codex_runtime_hides_commands_without_thread() -> None:
+async def _test_codex_runtime_disables_commands_without_thread() -> None:
     runtime = CodexRuntime(config=_config(), host=FakeHost(), client=FakeCodexClient())
 
     commands = await runtime.list_commands("sess_1", query="compact")
 
-    assert commands == ()
+    assert [command.id for command in commands] == ["compact"]
+    assert commands[0].enabled is False
+    assert commands[0].disabled_reason == "session_unloaded"
 
 
-def test_codex_runtime_rejects_compact_command_without_sdk_request() -> None:
-    asyncio.run(_test_codex_runtime_rejects_compact_command_without_sdk_request())
+def test_codex_runtime_accepts_native_compact_command() -> None:
+    asyncio.run(_test_codex_runtime_accepts_native_compact_command())
 
 
-async def _test_codex_runtime_rejects_compact_command_without_sdk_request() -> None:
+async def _test_codex_runtime_accepts_native_compact_command() -> None:
     client = FakeCodexClient()
     host = FakeHost()
     runtime = CodexRuntime(config=_config(), host=host, client=client)
@@ -4080,15 +4203,13 @@ async def _test_codex_runtime_rejects_compact_command_without_sdk_request() -> N
         raw="/compact",
     )
 
-    assert result.ok is False
+    assert result.ok is True
     assert result.command == "compact"
-    assert result.code == "unknown_command"
-    assert result.message == "Codex runtime does not support /compact"
-    assert all(request[0] != "thread/compact/start" for request in client.requests)
+    assert result.result["executionState"] == "accepted"
+    assert client.requests[-1] == ("thread/compact/start", {"threadId": "thread_1"})
+    assert all(request[0] != "turn/start" for request in client.requests)
     assert host.notice_upserts == []
     assert host.timeline_item_upserts == []
-    assert host.state_updates == []
-    assert host.session_capability_updates == []
 
 
 def test_codex_runtime_rejects_disabled_command_without_sdk_request() -> None:
@@ -4103,8 +4224,8 @@ async def _test_codex_runtime_rejects_disabled_command_without_sdk_request() -> 
 
     assert result.ok is False
     assert result.command == "compact"
-    assert result.code == "unknown_command"
-    assert result.message == "Codex runtime does not support /compact"
+    assert result.code == "command_unavailable"
+    assert result.message == "session_unloaded"
     assert all(request[0] != "thread/compact/start" for request in client.requests)
 
 
@@ -4125,8 +4246,7 @@ async def _test_codex_runtime_rejects_command_args_without_sdk_request() -> None
 
     assert result.ok is False
     assert result.command == "compact"
-    assert result.code == "unknown_command"
-    assert result.message == "Codex runtime does not support /compact"
+    assert result.code == "invalid_command"
     assert all(request[0] != "thread/compact/start" for request in client.requests)
 
 
@@ -6836,136 +6956,3 @@ class _SdkLowLevelTurnResult:
 @dataclass
 class _SdkId:
     id: str
-
-
-@pytest.mark.parametrize("action,mode", [("implement_plan", "default"), ("revise_plan", "plan")])
-def test_codex_plan_review_starts_next_turn_with_edited_plan(action: str, mode: str) -> None:
-    async def run() -> None:
-        from connector.runtimes.codex.sdk.client import codex_turn_start_params
-
-        class PlanClient(FakeCodexClient):
-            def __init__(self) -> None:
-                super().__init__()
-                self.plan_requests: list[CodexStartTurnRequest] = []
-
-            async def start_turn(self, request: CodexStartTurnRequest) -> CodexTurnResult:
-                self.plan_requests.append(request)
-                return await super().start_turn(request)
-
-        host = FakeHost()
-        client = PlanClient()
-        runtime = CodexRuntime(config=_config(), host=host, client=client)
-        async def emit(method: str, **params: Any) -> None:
-            await runtime._notifications.handle({"method": method, "params": {
-                "threadId": "thread_plan", "platformSessionId": "session_plan", **params,
-            }})
-        await emit("turn/started", turn={"id": "turn_plan"})
-        await emit("item/completed", turnId="turn_plan", item={"id": "plan_item", "type": "plan", "text": "# Original plan"})
-        assert not host.notice_upserts
-        await emit("turn/completed", turn={"id": "turn_plan", "status": "completed"})
-        notice = host.notice_upserts[-1]
-        assert notice.source["component"] == "codex.plan_review"
-        assert notice.message == "# Original plan"
-        assert host.state_updates[-1]["status"] == "waiting_approval"
-        await emit("turn/completed", turn={"id": "turn_plan", "status": "completed"})
-        assert runtime._notices.get(notice.notice_id).status == "open"
-        assert host.state_updates[-1]["status"] == "waiting_approval"
-        invalid = await runtime.respond_interaction("session_plan", notice.notice_id, action, {"plan": " "})
-        assert not invalid.ok
-        result = await runtime.respond_interaction("session_plan", notice.notice_id, action, {
-            "plan": "# Edited plan\n\nWrite tests first.", "feedback": "Check edge cases.",
-        })
-        assert result.ok
-        request = client.plan_requests[-1]
-        assert request.collaboration_mode == mode
-        assert "# Edited plan" in request.content
-        assert "# Original plan" not in request.content
-        if action == "revise_plan":
-            assert "Check edge cases." in request.content
-        wire = codex_turn_start_params(replace(request, model="gpt-example")).model_dump(mode="json", by_alias=True)
-        assert wire["collaborationMode"]["mode"] == mode
-        assert wire["collaborationMode"]["settings"]["model"] == "gpt-example"
-        duplicate = await runtime.respond_interaction("session_plan", notice.notice_id, action, {"plan": "# Again"})
-        assert not duplicate.ok
-        assert len(client.plan_requests) == 1
-        assert host.notice_upserts[-1].status == "resolved"
-    asyncio.run(run())
-
-
-@pytest.mark.parametrize("status", ["failed", "interrupted"])
-def test_codex_incomplete_plan_turn_does_not_offer_execution(status: str) -> None:
-    async def run() -> None:
-        host = FakeHost()
-        runtime = CodexRuntime(config=_config(), host=host, client=FakeCodexClient())
-        await runtime._notifications.handle({"method": "item/completed", "params": {
-            "threadId": "thread_plan", "platformSessionId": "session_plan", "turnId": "turn_plan",
-            "item": {"id": "plan_item", "type": "plan", "text": "# Incomplete"},
-        }})
-        await runtime._notifications.handle({"method": "turn/completed", "params": {
-            "threadId": "thread_plan", "platformSessionId": "session_plan", "turn": {"id": "turn_plan", "status": status},
-        }})
-        assert not [n for n in host.notice_upserts if n.source.get("component") == "codex.plan_review"]
-        assert not runtime._notifications.plans.pending_plans
-    asyncio.run(run())
-
-
-def test_codex_typed_plan_event_preserves_plan_text() -> None:
-    event = CodexSdkEvent.from_value(Notification(
-        method="item/completed",
-        payload=ItemCompletedNotification(
-            thread_id="thread_plan", turn_id="turn_plan", completed_at_ms=0,
-            item=ThreadItem(root=PlanThreadItem(id="plan_item", type="plan", text="# Proposed plan")),
-        ),
-    ))
-    assert event.item_type == "plan"
-    assert event.content == "# Proposed plan"
-
-
-def test_codex_plan_start_failure_retains_edited_plan_for_retry() -> None:
-    async def run() -> None:
-        class FailingClient(FakeCodexClient):
-            async def start_turn(self, request: CodexStartTurnRequest) -> CodexTurnResult:
-                raise ValueError("start failed")
-        host = FakeHost()
-        runtime = CodexRuntime(config=_config(), host=host, client=FailingClient())
-        notice = SessionNotice(
-            notice_id="plan_retry", session_id="session_plan", runtime="codex", type="interaction",
-            title="Review plan", message="# Original", severity="info", status="open", interaction_type="approval",
-            response_required=True, actions=({"actionId": "implement_plan", "label": "Execute"},),
-            source={"component": "codex.plan_review"}, context={"threadId": "thread_plan"},
-        )
-        runtime._notices.upsert(notice)
-        with pytest.raises(ValueError, match="start failed"):
-            await runtime.respond_interaction("session_plan", "plan_retry", "implement_plan", {"plan": "# Edited"})
-        pending = runtime._notices.get("plan_retry")
-        assert pending.status == "open"
-        assert pending.message == "# Edited"
-        assert host.state_updates[-1]["status"] == "waiting_approval"
-    asyncio.run(run())
-
-
-def test_codex_plan_mode_uses_resumed_model_when_no_selection_exists() -> None:
-    async def run() -> None:
-        from types import SimpleNamespace
-
-        from openai_codex.generated.v2_all import ReasoningEffort
-
-        class PlanServer(_FakeLowLevelCodexServer):
-            async def thread_resume(self, thread_id: str, params: Any) -> Any:
-                self.thread_resumes.append((thread_id, params))
-                return SimpleNamespace(model="current-model", reasoning_effort=ReasoningEffort.high)
-
-        class PlanSdk(_LazyLowLevelSdkClient):
-            async def _ensure_initialized(self) -> None:
-                self.initialized = True
-                self._client = PlanServer()
-
-        sdk = PlanSdk()
-        client = CodexSdkClient(sdk, sdk=_SdkWithHandles())
-        await client.start_turn(CodexStartTurnRequest(thread_id="thread_1", content="Implement edited plan", collaboration_mode="default"))
-        wire = sdk.low_level.turn_starts[0][2].model_dump(mode="json", by_alias=True)
-        assert wire["collaborationMode"]["mode"] == "default"
-        assert wire["collaborationMode"]["settings"]["model"] == "current-model"
-        assert wire["collaborationMode"]["settings"]["reasoning_effort"] == "high"
-        assert len(sdk.low_level.thread_resumes) == 1
-    asyncio.run(run())

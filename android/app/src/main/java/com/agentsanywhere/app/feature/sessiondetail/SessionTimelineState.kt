@@ -53,10 +53,8 @@ data class TimelineMessage(
     val contentHash: String = "",
     val sourceRuntime: String? = null,
     val sourceItemType: String? = null,
-    val sourceRawType: String? = null,
     val sourceReplacedBy: String? = null,
     val optimistic: Boolean = false,
-    val retryAction: RuntimeMessageAction? = null,
     val errorMessage: String? = null,
 )
 

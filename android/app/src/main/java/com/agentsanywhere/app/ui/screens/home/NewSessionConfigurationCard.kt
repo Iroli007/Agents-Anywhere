@@ -31,7 +31,6 @@ import com.valentinilk.shimmer.shimmer
 internal enum class NewSessionConfigurationKey {
     Device,
     Agent,
-    AgentPreset,
     Model,
     Effort,
     Permission,

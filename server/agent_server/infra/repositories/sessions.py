@@ -75,12 +75,10 @@ def _latest_timeline_item_source() -> tuple[Any, Any]:
     ``idx_timeline_items_session_latest`` index for the correlated lookup and
     the ``(session_id, id)`` primary key for the row itself.
 
-    A correlated subquery is used rather than ``LATERAL`` because SQLite (the
-    default test backend) does not implement ``LATERAL``. The subquery
-    correlates on ``sessions.id`` rather than on the aliased join target:
-    correlating on the alias makes the subquery depend on the table it is
-    joined to, so the planner cannot drive the join from the session rows and
-    degrades into a scan of the whole timeline table.
+    The correlated subquery correlates on ``sessions.id`` rather than on the
+    aliased join target: correlating on the alias makes the subquery depend on
+    the table it is joined to, so the planner cannot drive the join from the
+    session rows and degrades into a scan of the whole timeline table.
     """
 
     latest = timeline_items_t.alias("latest_timeline_item")
@@ -329,7 +327,7 @@ class SessionRepositoryMixin:
                     model_selection_id=model_selection_id,
                     permission_selection_id=permission_selection_id,
                     external_session_id=external_session_id,
-                    title=title,
+                    title=_client_session_title(title),
                     cwd=cwd,
                     status="idle",
                     takeover=int(takeover),
@@ -1440,12 +1438,7 @@ class SessionRepositoryMixin:
             await conn.execute(
                 update(sessions_t)
                 .where(sessions_t.c.id == session_id)
-                .values(
-                    archived=int(bool(archived)),
-                    archived_at=now if archived else None,
-                    dsh_archive_legacy=0,
-                    updated_at=now,
-                )
+                .values(**_manual_archive_values(archived=archived, now=now))
             )
         return await self.get_session(session_id, user_id=user_id)
 
@@ -1486,12 +1479,7 @@ class SessionRepositoryMixin:
                 await conn.execute(
                     update(sessions_t)
                     .where(sessions_t.c.id.in_(owned_ids))
-                    .values(
-                        archived=int(bool(archived)),
-                        archived_at=now if archived else None,
-                        dsh_archive_legacy=0,
-                        updated_at=now,
-                    )
+                    .values(**_manual_archive_values(archived=archived, now=now))
                 )
 
         sessions: list[SessionView] = []
@@ -1556,12 +1544,7 @@ class SessionRepositoryMixin:
                 await conn.execute(
                     update(sessions_t)
                     .where(sessions_t.c.id.in_(target_ids))
-                    .values(
-                        archived=int(bool(archived)),
-                        archived_at=now if archived else None,
-                        dsh_archive_legacy=0,
-                        updated_at=now,
-                    )
+                    .values(**_manual_archive_values(archived=archived, now=now))
                 )
 
         if not target_ids:
