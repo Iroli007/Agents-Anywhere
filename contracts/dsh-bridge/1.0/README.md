@@ -1,5 +1,7 @@
 # DSH Bridge Protocol 1.0
 
+> **Superseded by [2.0](../2.0/README.md).** 1.0 describes the hand-written JSON-RPC transport used in Agents Anywhere 2.0.x; the schemas and fixtures stay for reference and for old-Connector session identities.
+
 These schemas and fixtures define the line-level JSON-RPC contract shared by the
 Agents Anywhere Connector and `@agents-anywhere/dsh-bridge-next` (and the legacy bridge). Transport tests own
 UTF-8 framing, newline handling, and the 8 MiB frame limit.
@@ -26,6 +28,9 @@ canonical platform session IDs directly. This retains the existing hash algorith
 Feature flags add `readOnly` and `snapshotPagination`; these are optional 1.x fields.
 
 The canonical Timeline schema already defines `type/status/content/source/contentHash`.
+Strings must be well-formed UTF-16 by the time `contentHash` is computed: plugins (2.1.0+) replace lone surrogates with U+FFFD before hashing. The Connector hashes a lone surrogate the way `JSON.stringify` writes it (`\udXXX`), so items from older plugins still verify, and replaces it before forwarding to the Server.
+
+When the Server refuses a complete snapshot for good (HTTP 413, another 4xx, or a 200 whose `rejected` list names it), the Connector still acknowledges the `snapshot.commit` so the feed moves on to the other sessions, but does not save that session's checkpoint, reports it as `unavailable` (reason `history_too_large` or `history_rejected`), withholds its live `timeline.itemUpsert` / `session.turnEnded` and asks for a fresh capture with `runtime.sync.refresh` after a growing delay. Transient failures (network, 5xx) still fail the subscription as before.
 Legacy native `payload` envelopes are not part of that schema and are no longer
 projected by Python. The plugin is the sole native-log projection owner.
 

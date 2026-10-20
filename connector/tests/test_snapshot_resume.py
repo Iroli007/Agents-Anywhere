@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock
 
 import httpx
 import pytest
-
 from connector.server.ingest import ConnectorIngestClient
 
 

@@ -159,12 +159,15 @@ class RuntimeHostClient(ABC):
         self,
         status: str,
         error: Mapping[str, Any] | None = None,
+        phase: Mapping[str, Any] | None = None,
     ) -> None:
         """Report a provider-owned health change for this runtime instance.
 
-        The Connector routes this to the owning supervisor so runtime status
-        stays one state machine. Hosts that are not bound to an instance ignore
-        it.
+        ``phase`` names a step inside a non-error status (for example
+        ``{"code": "syncing", "message": ...}`` while ``starting``); it is
+        shown to the user as progress, never as a fault. The Connector routes
+        this to the owning supervisor so runtime status stays one state
+        machine. Hosts that are not bound to an instance ignore it.
         """
 
         return None

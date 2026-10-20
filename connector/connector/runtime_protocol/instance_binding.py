@@ -177,7 +177,11 @@ class RuntimeInstanceHost(RuntimeHostClient):
     instance: RuntimeInstanceSpec
     source_key: RuntimeSourceKey | None = None
     status_reporter: (
-        Callable[[str, str, Mapping[str, Any] | None], Awaitable[None]] | None
+        Callable[
+            [str, str, Mapping[str, Any] | None, Mapping[str, Any] | None],
+            Awaitable[None],
+        ]
+        | None
     ) = None
 
     @property
@@ -373,10 +377,11 @@ class RuntimeInstanceHost(RuntimeHostClient):
         self,
         status: str,
         error: Mapping[str, Any] | None = None,
+        phase: Mapping[str, Any] | None = None,
     ) -> None:
         if self.status_reporter is None:
             return
-        await self.status_reporter(self.instance.runtime_id, status, error)
+        await self.status_reporter(self.instance.runtime_id, status, error, phase)
 
     async def attachment_download(
         self,

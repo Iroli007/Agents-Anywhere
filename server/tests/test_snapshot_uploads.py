@@ -40,7 +40,7 @@ def test_restart_missing_chunk_resume_and_idempotent_commit(tmp_path):
     assert client.post(f"{ROOT}/{manifest['uploadId']}/commit", headers=headers).status_code == 409
     assert asyncio.run(client.app.state.store.timeline.read(session)) == []
     # A new app/Store instance proves that receipt is persisted beyond process memory.
-    restarted = ApiV2TestClient(create_app(tmp_path / "test.sqlite3"))
+    restarted = ApiV2TestClient(create_app())
     state = restarted.post(ROOT, json=manifest, headers=headers).json()
     assert state["receivedChunks"] == [1]
     for index in (0, 2):
@@ -147,7 +147,7 @@ def test_background_cleanup_without_new_upload_preserves_unexpired_data(tmp_path
     asyncio.run(run())
 
     monkeypatch.undo()
-    restarted = ApiV2TestClient(create_app(tmp_path / "test.sqlite3"))
+    restarted = ApiV2TestClient(create_app())
     assert restarted.post(ROOT, json={**expired, "throughSeq": expired["throughSeq"] - 1}, headers=headers).status_code == 409
     assert restarted.post(ROOT, json=expired, headers=headers).json()["receivedChunks"] == []
 
@@ -200,7 +200,7 @@ def test_real_connector_resumes_after_server_restart_and_lost_chunk_reply(tmp_pa
         assert first.writes == [0, 1]
         assert [i.id for i in await client.app.state.store.timeline.read(session_id)] == ["old"]
         await client.app.state.store.close()
-        app = create_app(tmp_path / "test.sqlite3")
+        app = create_app()
         second = Wire(app)
         async with httpx.AsyncClient(transport=second) as http:
             ingest = ConnectorIngestClient("http://test", AsyncMock(return_value=token), lambda: http, lambda _: http)
@@ -477,7 +477,7 @@ def test_real_connector_lost_final_reply_survives_restart_without_reupload(tmp_p
         seq = await client.app.state.store.get_session_seq(session)
         assert [item.content["text"] for item in await client.app.state.store.timeline.read(session)] == ["small"]
         await client.app.state.store.close()
-        app = create_app(tmp_path / "test.sqlite3")
+        app = create_app()
         second = Wire(app)
         async with httpx.AsyncClient(transport=second) as http:
             ingest = ConnectorIngestClient("http://test", AsyncMock(return_value=token), lambda: http, lambda _: http)

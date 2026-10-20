@@ -7,7 +7,7 @@ import os
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Annotated, Any
 
 from anyio import CancelScope
 from fastapi import (
@@ -78,6 +78,7 @@ from agent_server.services.runtime_ingress import (
 )
 from agent_server.services.snapshot_uploads import SnapshotUploadService
 from agent_server.services.timeline_write_buffer import TimelineWriteBuffer
+from agent_server.services.usage_events import connector_online_event
 
 router = APIRouter(tags=["connector-ingress"])
 
@@ -454,8 +455,8 @@ async def connector_ingest(
 
 @router.post("/connector/ingest/uploads")
 async def begin_snapshot_upload(
-    payload: SnapshotUploadManifest, authorization: str = Header(..., alias="Authorization"),
-    db: Store = Depends(get_store),
+    payload: SnapshotUploadManifest, db: Annotated[Store, Depends(get_store)],
+    authorization: str = Header(..., alias="Authorization"),
 ) -> dict:
     connector_id = _access_token_connector_id(authorization)
     async with db.connector_lifecycle(connector_id):
@@ -469,7 +470,8 @@ async def begin_snapshot_upload(
 @router.put("/connector/ingest/uploads/{upload_id}/chunks/{index}")
 async def put_snapshot_chunk(
     upload_id: str, index: int, request: Request,
-    authorization: str = Header(..., alias="Authorization"), db: Store = Depends(get_store),
+    db: Annotated[Store, Depends(get_store)],
+    authorization: str = Header(..., alias="Authorization"),
 ) -> dict:
     connector_id = _access_token_connector_id(authorization)
     async with db.connector_lifecycle(connector_id):
@@ -488,8 +490,8 @@ async def put_snapshot_chunk(
 
 @router.post("/connector/ingest/uploads/{upload_id}/commit")
 async def commit_snapshot_upload(
-    upload_id: str, authorization: str = Header(..., alias="Authorization"),
-    db: Store = Depends(get_store),
+    upload_id: str, db: Annotated[Store, Depends(get_store)],
+    authorization: str = Header(..., alias="Authorization"),
 ) -> dict:
     connector_id = _access_token_connector_id(authorization)
     async with db.connector_lifecycle(connector_id):
@@ -592,7 +594,10 @@ async def connector_ws(
             await _require_active_connector(auth_header, db)
             connection = await manager.register(connector_id, websocket, ready=False)
             ingest_service = ConnectorIngestService(
-                db, ConnectorNotificationService(db, realtime, timeline_write_buffer),
+                db, ConnectorNotificationService(
+                    db, realtime, timeline_write_buffer,
+                    usage_recorder=websocket.app.state.usage_recorder,
+                ),
                 timeline_broker, runtime_service, manager,
                 websocket.app.state.session_runtime_state_cache,
             )
@@ -608,9 +613,10 @@ async def connector_ws(
             connection.drain_notifications = notification_pump.close
             connection.set_runtime_ingress_enabled = notification_pump.set_runtime_ingress_enabled
             try:
+                device_os = _connector_device_os(websocket.headers.get("x-device-os"))
                 if not await db.record_connector_connection(
                     connector_id,
-                    device_os=_connector_device_os(websocket.headers.get("x-device-os")),
+                    device_os=device_os,
                 ):
                     await websocket.close(code=1008, reason="connector was revoked")
                     return
@@ -636,6 +642,16 @@ async def connector_ws(
     reader_task: asyncio.Task[None] | None = None
     capabilities_task: asyncio.Task[None] | None = None
     try:
+        # Usage statistics: the device is online once the socket is ready. This
+        # runs inside the main try so a disconnect during the write still
+        # reaches the cleanup below.
+        await websocket.app.state.usage_recorder.record(
+            connector_online_event(
+                connector_id=connector_id,
+                user_id=None,
+                device_os=device_os,
+            )
+        )
         # Discovery refreshes provider metadata independently of request routing.
         discovery_task = asyncio.create_task(
             _discover_runtimes(

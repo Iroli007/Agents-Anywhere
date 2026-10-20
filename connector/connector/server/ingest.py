@@ -7,10 +7,11 @@ from typing import Any, BinaryIO
 
 import httpx
 
+from connector.core.unicode import UTF8_REPLACE_LONE_SURROGATES
 from connector.logging import logger
 from connector.runtime_protocol.host import UploadProgress
 from connector.server.auth import ConnectorAuthenticationError
-from connector.server.errors import ConnectorNetworkError
+from connector.server.errors import ConnectorIngestClosedError, ConnectorNetworkError
 from connector.server.snapshot_body import body_digest, snapshot_body
 from connector.server.urls import api_v2_url
 
@@ -22,7 +23,6 @@ from connector.server.urls import api_v2_url
 FLUSH_WINDOW_SECONDS = 0.02
 FLUSH_MAX = 64
 UPLOAD_CHUNK_BYTES = 64 * 1024
-
 AccessTokenProvider = Callable[[bool], Awaitable[str]]
 HttpClientGetter = Callable[[], httpx.AsyncClient | None]
 HttpClientFactory = Callable[[httpx.Timeout | float], httpx.AsyncClient]
@@ -57,7 +57,7 @@ class ConnectorIngestClient:
         return self._posting or bool(self._inflight) or not self._notify_queue.empty()
 
     def close(self, error: Exception | None = None) -> None:
-        self._closed = error or RuntimeError("connector ingest is closed")
+        self._closed = error or ConnectorIngestClosedError("connector ingest is closed")
         # Wake blocked producers. They check _closed again after admission.
         while not self._notify_queue.empty():
             self._notify_queue.get_nowait()
@@ -262,7 +262,7 @@ class ConnectorIngestClient:
         *, on_progress: UploadProgress | None = None,
     ) -> httpx.Response:
         if on_progress is not None:
-            encoded = json.dumps({"notifications": notifications}, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8")
+            encoded = json.dumps({"notifications": notifications}, ensure_ascii=False, separators=(",", ":"), allow_nan=False).encode("utf-8", UTF8_REPLACE_LONE_SURROGATES)
 
             async def body():
                 for offset in range(0, len(encoded), UPLOAD_CHUNK_BYTES):

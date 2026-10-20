@@ -5,7 +5,7 @@
 | 目标 | 文档 |
 | --- | --- |
 | 安装客户端、登录、连接设备 | [安装与首次使用](getting-started.md) |
-| 查看 2.0.3 安装包和发布边界 | [2.0.3 发布说明](releases/2.0.3.md)；历史版本见 [2.0.0](releases/2.0.0.md) |
+| 查看 2.1.0 的接口变化与各端最低版本 | [2.1.0 发布说明](releases/2.1.0.md)；安装包记录见 [2.0.3](releases/2.0.3.md)，历史版本见 [2.0.0](releases/2.0.0.md) |
 | 部署自己的服务 | [Docker](../docker/README.md)、[Server](../server/README.md) |
 | 升级已有部署或从 v1 迁移 | [升级指南](upgrading.md) |
 | 版本号含义与发版规则 | [版本号规则](versioning.md) |
@@ -14,10 +14,9 @@
 | 接入无图形界面的机器 | [Connector](../connector/README.md) |
 | Android 构建 | [Android](../android/README.md) |
 | 架构和 API | [Server 架构](server-architecture.md)、[API](api/README.md) |
-| Runtime 和本机协议 | [Runtime protocol](runtime-protocol/README.md)、[本机协议](../contracts/local-machine/2.0/README.md) |
 | DSH 大历史内存 | [实现与验证](dsh-snapshot-uploads.md) |
 | DSH 慢速历史上传 | [实现与验证](dsh-slow-upload.md)、[2.1.0 配套说明（未发布）](releases/2.1.0.md) |
-- [DSH 快照上传内存与断点续传](dsh-snapshot-uploads.md)
+| Runtime 和本机协议 | [Runtime protocol](runtime-protocol/README.md)、[本机协议](../contracts/local-machine/2.0/README.md)、[Codex IPC 接管](codex-ipc-takeover.md) |
 
 当前开发版本为 2.1，开发主线为 `main`。API 路径使用 `/api/v2`，数据库修订号独立管理，版本号含义见[版本号规则](versioning.md)。已发布安装包的功能范围见发布说明。
 

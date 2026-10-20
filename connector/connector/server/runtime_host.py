@@ -6,6 +6,9 @@ import time
 from collections.abc import Awaitable, Callable, Iterable, Mapping
 from typing import Any
 
+import httpx
+from websockets.exceptions import ConnectionClosed
+
 from connector.logging import logger
 from connector.runtime_protocol import (
     RuntimeAttachmentContent,
@@ -17,7 +20,9 @@ from connector.runtime_protocol import (
     SessionNotice,
     SessionSourceObservation,
 )
+from connector.runtime_protocol.errors import RuntimeNoticePublishError
 from connector.runtime_protocol.host import RuntimeHostClient, UploadProgress
+from connector.server.errors import ConnectorIngestClosedError, ConnectorNetworkError
 from connector.server.runtime_rpc_payloads import (
     DeferredServerPayload,
     capability_set_payload,
@@ -319,10 +324,22 @@ class ConnectorRuntimeHost(RuntimeHostClient):
         self,
         notice: SessionNotice,
     ) -> None:
-        await self._notify_server(
-            "notice.upsert",
-            session_notice_payload(notice),
-        )
+        payload = session_notice_payload(notice)
+        try:
+            await self._notify_server("notice.upsert", payload)
+        except (
+            ConnectionError,
+            TimeoutError,
+            httpx.NetworkError,
+            httpx.TimeoutException,
+            httpx.RemoteProtocolError,
+            ConnectionClosed,
+            ConnectorNetworkError,
+            ConnectorIngestClosedError,
+        ) as exc:
+            raise RuntimeNoticePublishError(
+                f"could not publish notice {notice.notice_id}"
+            ) from exc
 
     async def runtime_error(
         self,
